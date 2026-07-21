@@ -23,9 +23,11 @@
 cd backend
 python -m venv .venv
 .venv/Scripts/python -m pip install -r requirements.txt   # 如遇镜像 403，加 -i https://mirrors.aliyun.com/pypi/simple/
-.venv/Scripts/python scripts/seed.py                       # 建库 + 导入意象知识库
+.venv/Scripts/python scripts/rebuild_all.py                # 一键重建演示数据库（月/夕阳/柳/雁，含对仗/古画/关联）
 .venv/Scripts/python run.py                                # 启动于 http://127.0.0.1:8000
 ```
+
+> 数据库文件不入库（见 .gitignore），`rebuild_all.py` = 种子数据 + 全部示例增量包，一条命令完整复现演示数据；只想初始化两个核心意象时也可只跑 `scripts/seed.py`。
 
 - 接口文档（自动生成）：http://127.0.0.1:8000/docs
 - 健康检查：http://127.0.0.1:8000/api/health
