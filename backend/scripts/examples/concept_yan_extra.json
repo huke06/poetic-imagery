@@ -1,0 +1,33 @@
+{
+  "concept": {
+    "name": "雁"
+  },
+  "poetries": [
+    {
+      "title": "使至塞上", "author": "王维", "dynasty": "唐", "writing_type": "诗",
+      "content": "单车欲问边，属国过居延。\n征蓬出汉塞，归雁入胡天。\n大漠孤烟直，长河落日圆。\n萧关逢候骑，都护在燕然。",
+      "rels": [
+        { "clause": "征蓬出汉塞，归雁入胡天", "emotion": "思乡", "is_classic": 1, "weight": 2 }
+      ]
+    }
+  ],
+  "couplets": [
+    { "word_a": "征蓬", "word_b": "归雁", "verse": "征蓬出汉塞，归雁入胡天", "source": "王维《使至塞上》" },
+    { "word_a": "乡书", "word_b": "归雁", "verse": "乡书何处达？归雁洛阳边", "source": "王湾《次北固山下》" },
+    { "word_a": "孤雁", "word_b": "野鸦", "verse": "野鸦无意绪，鸣噪自纷纷", "source": "杜甫《孤雁》" }
+  ],
+  "artworks": [
+    {
+      "name": "平沙落雁图", "artist": "佚名", "dynasty": "宋", "material": "绢本设色", "size": "26.1×27.3cm",
+      "subject_names": "中国绘画;花鸟;山水",
+      "description": "秋渚平沙，芦苇瑟瑟，群雁或栖或翔。平沙落雁为潇湘八景之一，是雁入画题的经典。",
+      "relation_desc": "秋渚群雁、栖翔不定，正见「衡阳雁去」式的塞外秋声与天涯羁思。",
+      "weight": 2, "svg_theme": "青绿"
+    }
+  ],
+  "relations": [
+    { "to": "夕阳", "relation_type": "共现", "description": "《使至塞上》「征蓬出汉塞，归雁入胡天」与「大漠孤烟直，长河落日圆」同篇，《渔家傲》「衡阳雁去」与「长烟落日」相衬：雁阵与落日同为边塞苍凉的标志性景物。" },
+    { "to": "月", "relation_type": "情感同源", "description": "同托思乡怀人之情：「月是故乡明」与「归雁洛阳边」，一仰首一远眺，皆为游子心之所系。" },
+    { "to": "柳", "relation_type": "情感同源", "description": "同写离别：柳以谐音「留」赠别，雁以传书寄远——一为送行之物，一为通音之使。" }
+  ]
+}

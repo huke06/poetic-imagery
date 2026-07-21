@@ -1,0 +1,45 @@
+
+
+1.获取appkey 和secret  登录 https://openapi.artlib.cn/index 注册用户获取 appkey 和 secret  2.Api 接口基础地址：  https://openapi.artlib.cn   后续的请求地址前需要加上该基础地址  3.获取token  请求地址：/get_token  请求方法：GET  请求参数：  参数  是否必填  类型  appKey  string  说明  secret  appKey  是  是  string  secret
+
+开放艺术数据接口说明  每个Api接口都需要在 header 传入 token 参数 
+
+## 接口基础信息
+
+请求路由：`/work/detail/:id`
+
+请求方法：`GET`
+
+## 请求参数表
+
+表格
+
+| 参数 | 是否必填 | 类型   | 说明      |
+| :--- | :------- | :----- | :-------- |
+| id   | 是       | string | 艺术品 id |
+
+## 返回响应示例
+
+```
+{
+  "code": 0,
+  "data": {
+    "_highlight": null,
+    "artist_id": "8a98a68a56f8c28e0156fe14c9341bcd",
+    "artist_ids": "8a98a68a56f8c28e0156fe14c9341bcd;",
+    "en_name": "",
+    "id": "8a98a68a8060f90c01809a39e5870a92",
+    "imgs": "https://artlib.cn/upload3/workImage/2022/5/7/20220507004416nJzviqq0_s.jpg",
+    "imgx": "https://artlib.cn/upload3/workImage/2022/5/7/20220507004416nJzviqq0_x.jpg",
+    "imp_author_name": "丁云鹏;",
+    "imp_period": "明代",
+    "material": "纸本设色",
+    "name": "明代 丁云鹏 庄严大士瑞像图轴",
+    "period_ids": "4af48db950a6b9100150a6c13f4000a6",
+    "size": "197.8x98cm",
+    "subject_codes": "0218;0234;0239",
+    "subject_names": "中国绘画;佛教艺术;宗教艺术",
+    "work_period": "1609年"
+  }
+}
+```

@@ -1,0 +1,51 @@
+{
+  "concept": {
+    "name": "意象名（如：柳）",
+    "category": "分类：天象/植物/动物/器物/地理",
+    "theme_color": "#5B7C5F",
+    "aliases": "别称1,别称2（用于问答关键词匹配，逗号分隔）",
+    "original_meaning": "本义解释（这个事物本身是什么）",
+    "poetic_meaning": "诗词引申义与文化内涵（为什么诗人爱用它，承载了哪些情感）",
+    "emotion_tags": "情感标签1,情感标签2,情感标签3,情感标签4（建议 3-5 个，下文所有关联的 emotion 必须从这里选）",
+    "origin_dynasty": "起源朝代（如：先秦）",
+    "peak_dynasty": "鼎盛朝代（如：唐）",
+    "description": "演变史：按朝代脉络写这个意象如何从萌芽到鼎盛再到转型（详情页演变脉络区展示）"
+  },
+  "poetries": [
+    {
+      "title": "篇目名",
+      "author": "作者",
+      "dynasty": "朝代（先秦/汉/魏晋/唐/五代/宋/元/明/清）",
+      "writing_type": "体裁：诗/词/曲/文",
+      "content": "全文，换行用 \\n",
+      "rels": [
+        {
+          "clause": "含意象的诗句（须为 content 中的原文片段）",
+          "emotion": "情感标签（必须在 concept.emotion_tags 之内）",
+          "is_classic": 1,
+          "weight": 3
+        }
+      ]
+    }
+  ],
+  "couplets": [
+    { "word_a": "对仗词甲", "word_b": "对仗词乙", "verse": "例句", "source": "作者《篇目》" }
+  ],
+  "artworks": [
+    {
+      "name": "画名",
+      "artist": "作者",
+      "dynasty": "朝代",
+      "material": "材质（如：绢本设色）",
+      "size": "尺寸",
+      "subject_names": "主题1;主题2",
+      "description": "作品简介",
+      "relation_desc": "诗画关联阐释（这幅画与意象的关系）",
+      "weight": 3,
+      "svg_theme": "可选：月/夕阳/青绿（占位图风格，默认自动判断）"
+    }
+  ],
+  "relations": [
+    { "to": "月", "relation_type": "对仗/共现/情感同源/演变衍生", "description": "关系说明" }
+  ]
+}

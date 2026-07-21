@@ -1,0 +1,583 @@
+"""管理后台模块：数据总览 / 系统配置 / 意象·诗文·古画·对仗·关联 CRUD
+
+鉴权：所有接口需请求头 X-Admin-Token（与生效配置中的 ADMIN_TOKEN 一致）
+"""
+import json
+import shutil
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, UploadFile
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from .. import config_store
+from ..config import settings
+from ..database import get_db
+from ..models import (
+    Artwork, Concept, ConceptArtworkRel, ConceptPoetryRel, ConceptRelation, Couplet, DynastyStats, Poetry,
+)
+from ..schemas import ApiResp, ConceptUpsert, RelationUpsert
+from ..utils.palette import assign_color, palette_for_category
+
+router = APIRouter(prefix="/api/admin", tags=["管理后台"])
+
+STATIC_ART_DIR = Path(__file__).resolve().parent.parent / "static" / "artworks"
+
+# ── 导入模板（兜底内容；优先读取项目根目录 templates/ 下的文件） ──
+JSON_TEMPLATE_FALLBACK = json.dumps({
+    "concept": {"name": "意象名（必填）", "category": "天象/植物/动物/器物/地理/人事", "theme_color": "",
+                "aliases": "别称1,别称2", "original_meaning": "本义", "poetic_meaning": "引申义",
+                "emotion_tags": "情感1,情感2,情感3,情感4", "origin_dynasty": "先秦", "peak_dynasty": "唐",
+                "description": "演变史"},
+    "poetries": [{"title": "篇目名", "author": "作者", "dynasty": "唐", "writing_type": "诗",
+                  "content": "全文，换行用 \n",
+                  "rels": [{"clause": "含意象的诗句", "emotion": "情感标签之一", "is_classic": 1, "weight": 3}]}],
+    "couplets": [{"word_a": "对仗词甲", "word_b": "对仗词乙", "verse": "例句", "source": "作者《篇目》"}],
+    "artworks": [{"name": "画名", "artist": "作者", "dynasty": "宋", "material": "绢本设色", "size": "",
+                  "subject_names": "中国绘画;山水", "description": "简介", "relation_desc": "诗画关联阐释", "weight": 2}],
+    "relations": [{"to": "月", "relation_type": "共现", "description": "关系说明"}],
+}, ensure_ascii=False, indent=2)
+
+CSV_POETRIES_FALLBACK = """concept_name,concept_category,concept_tags,title,author,dynasty,writing_type,content,clause,emotion,is_classic,weight
+雁,动物,思乡 离别 孤寂 时光流逝,次北固山下,王湾,唐,诗,"客路青山外，行舟绿水前。\n潮平两岸阔，风正一帆悬。\n海日生残夜，江春入旧年。\n乡书何处达？归雁洛阳边。",乡书何处达？归雁洛阳边,思乡,1,3
+"""
+
+CSV_CONCEPTS_FALLBACK = """name,category,aliases,emotion_tags,origin_dynasty,peak_dynasty,theme_color,original_meaning,poetic_meaning,description
+雁,动物,"大雁,鸿雁,归雁,孤雁",思乡 离别 孤寂 时光流逝,先秦,唐宋,,"候鸟，秋来南去，春来北归。","雁的迁徙与书信传说使其成为思乡与离别的经典意象。","雁意象起于《诗经》……"
+"""
+
+
+def check_token(x_admin_token: str = Header(default="")):
+    token = config_store.get_effective("ADMIN_TOKEN", settings.ADMIN_TOKEN)
+    if x_admin_token != token:
+        raise HTTPException(401, "管理令牌无效")
+
+
+def _split_clauses(content: str) -> list[str]:
+    from scripts.seed import split_clauses
+    return split_clauses(content)
+
+
+# ═══════════ 数据总览 ═══════════
+@router.get("/overview", dependencies=[Depends(check_token)])
+def overview(db: Session = Depends(get_db)):
+    from ..utils import llm
+    return ApiResp(data={
+        "concepts": db.query(Concept).count(),
+        "poetries": db.query(Poetry).count(),
+        "artworks": db.query(Artwork).count(),
+        "concept_poetry_rels": db.query(ConceptPoetryRel).count(),
+        "concept_relations": db.query(ConceptRelation).count(),
+        "couplets": db.query(Couplet).count(),
+        "llm_configured": llm.llm_available(),
+        "concept_list": [
+            {"id": c.id, "name": c.name, "category": c.category, "theme_color": c.theme_color}
+            for c in db.query(Concept).order_by(Concept.id).all()
+        ],
+    })
+
+
+# ═══════════ 系统配置（热生效） ═══════════
+@router.get("/config", dependencies=[Depends(check_token)])
+def get_config():
+    env_fallback = {
+        "LLM_API_KEY": settings.LLM_API_KEY, "LLM_BASE_URL": settings.LLM_BASE_URL,
+        "LLM_MODEL": settings.LLM_MODEL,
+        "UPSTREAM_WRITING_BASE": settings.UPSTREAM_WRITING_BASE,
+        "UPSTREAM_BOOK_BASE": settings.UPSTREAM_BOOK_BASE,
+        "ADMIN_TOKEN": "（已设置）" if settings.ADMIN_TOKEN else "",
+    }
+    return ApiResp(data=config_store.all_effective(env_fallback))
+
+
+class ConfigUpdate(BaseModel):
+    changes: dict
+
+
+@router.put("/config", dependencies=[Depends(check_token)])
+def put_config(req: ConfigUpdate):
+    config_store.update(req.changes)
+    return ApiResp(msg="配置已保存并即时生效（密钥类字段留空表示回落环境变量）")
+
+
+# ═══════════ 配色体系 ═══════════
+@router.get("/palette", dependencies=[Depends(check_token)])
+def palette(name: str = "", category: str = ""):
+    """按分类返回传统色卡；传 name 时给出该意象的推荐色"""
+    data = {"family_colors": palette_for_category(category)}
+    if name:
+        data["suggested"] = assign_color(name, category)
+    return ApiResp(data=data)
+
+
+# ═══════════ 意象 CRUD ═══════════
+@router.post("/concept", dependencies=[Depends(check_token)])
+def create_concept(req: ConceptUpsert, db: Session = Depends(get_db)):
+    if db.query(Concept).filter_by(name=req.name).first():
+        raise HTTPException(400, "同名意象已存在")
+    payload = req.model_dump()
+    if not payload.get("theme_color"):
+        payload["theme_color"] = assign_color(req.name, req.category)["color"]
+    obj = Concept(**payload)
+    db.add(obj)
+    db.commit()
+    return ApiResp(data={"id": obj.id, "theme_color": obj.theme_color})
+
+
+@router.put("/concept/{concept_id}", dependencies=[Depends(check_token)])
+def update_concept(concept_id: int, req: ConceptUpsert, db: Session = Depends(get_db)):
+    obj = db.get(Concept, concept_id)
+    if not obj:
+        raise HTTPException(404, "意象不存在")
+    for k, v in req.model_dump().items():
+        setattr(obj, k, v)
+    db.commit()
+    return ApiResp(data={"id": obj.id})
+
+
+@router.delete("/concept/{concept_id}", dependencies=[Depends(check_token)])
+def delete_concept(concept_id: int, db: Session = Depends(get_db)):
+    obj = db.get(Concept, concept_id)
+    if not obj:
+        raise HTTPException(404, "意象不存在")
+    db.delete(obj)
+    db.commit()
+    return ApiResp()
+
+
+# ═══════════ 诗文 CRUD（含意象关联） ═══════════
+class PoetryRelIn(BaseModel):
+    concept_id: int
+    clause: str
+    emotion: str = ""
+    is_classic: int = 0
+    weight: int = 1
+
+
+class PoetryUpsert(BaseModel):
+    title: str
+    author: str = "佚名"
+    dynasty: str = ""
+    writing_type: str = "诗"
+    content: str
+    source_writing_id: str = ""
+    rels: list[PoetryRelIn] = Field(default_factory=list)
+
+
+def _poetry_full(p: Poetry, db: Session) -> dict:
+    rels = []
+    for r in db.query(ConceptPoetryRel).filter_by(poetry_id=p.id).all():
+        c = db.get(Concept, r.concept_id)
+        rels.append({"rel_id": r.id, "concept_id": r.concept_id, "concept_name": c.name if c else "?",
+                     "clause": r.clause, "emotion": r.emotion, "is_classic": r.is_classic, "weight": r.weight})
+    return {"id": p.id, "title": p.title, "author": p.author, "dynasty": p.dynasty,
+            "writing_type": p.writing_type, "content": p.content,
+            "source_writing_id": p.source_writing_id, "rels": rels}
+
+
+@router.get("/poetry/list", dependencies=[Depends(check_token)])
+def admin_poetry_list(keyword: str = "", page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=50),
+                      db: Session = Depends(get_db)):
+    q = db.query(Poetry)
+    if keyword:
+        like = f"%{keyword}%"
+        q = q.filter((Poetry.title.like(like)) | (Poetry.author.like(like)) | (Poetry.content.like(like)))
+    total = q.count()
+    rows = q.order_by(Poetry.id).offset((page - 1) * page_size).limit(page_size).all()
+    return ApiResp(data={"total": total, "page": page,
+                         "items": [_poetry_full(p, db) for p in rows]})
+
+
+@router.post("/poetry", dependencies=[Depends(check_token)])
+def create_poetry(req: PoetryUpsert, db: Session = Depends(get_db)):
+    obj = Poetry(title=req.title, author=req.author, dynasty=req.dynasty,
+                 writing_type=req.writing_type, content=req.content,
+                 source_writing_id=req.source_writing_id,
+                 clauses=json.dumps(_split_clauses(req.content), ensure_ascii=False))
+    db.add(obj)
+    db.flush()
+    for r in req.rels:
+        db.add(ConceptPoetryRel(poetry_id=obj.id, **r.model_dump()))
+    db.commit()
+    return ApiResp(data={"id": obj.id})
+
+
+@router.put("/poetry/{poetry_id}", dependencies=[Depends(check_token)])
+def update_poetry(poetry_id: int, req: PoetryUpsert, db: Session = Depends(get_db)):
+    obj = db.get(Poetry, poetry_id)
+    if not obj:
+        raise HTTPException(404, "诗文不存在")
+    obj.title, obj.author, obj.dynasty = req.title, req.author, req.dynasty
+    obj.writing_type, obj.content = req.writing_type, req.content
+    obj.source_writing_id = req.source_writing_id
+    obj.clauses = json.dumps(_split_clauses(req.content), ensure_ascii=False)
+    # 关联：以提交列表为准做差量更新（先删后增，保持简单可靠）
+    db.query(ConceptPoetryRel).filter_by(poetry_id=obj.id).delete()
+    for r in req.rels:
+        db.add(ConceptPoetryRel(poetry_id=obj.id, **r.model_dump()))
+    db.commit()
+    return ApiResp(data={"id": obj.id})
+
+
+@router.delete("/poetry/{poetry_id}", dependencies=[Depends(check_token)])
+def delete_poetry(poetry_id: int, db: Session = Depends(get_db)):
+    obj = db.get(Poetry, poetry_id)
+    if not obj:
+        raise HTTPException(404, "诗文不存在")
+    db.delete(obj)
+    db.commit()
+    return ApiResp()
+
+
+# ═══════════ 古画 CRUD 与图片接入 ═══════════
+class ArtworkUpsert(BaseModel):
+    name: str
+    artist: str = "佚名"
+    dynasty: str = ""
+    material: str = ""
+    size: str = ""
+    subject_names: str = ""
+    description: str = ""
+    image_url: str = ""          # 方式一：外链图片 URL
+    source_work_id: str = ""
+    concept_ids: list[int] = Field(default_factory=list)  # 关联意象
+    relation_desc: str = ""
+
+
+def _artwork_full(a: Artwork, db: Session) -> dict:
+    rels = [{"concept_id": r.concept_id, "relation_desc": r.relation_desc,
+             "concept_name": (db.get(Concept, r.concept_id) or Concept(name="?")).name}
+            for r in db.query(ConceptArtworkRel).filter_by(artwork_id=a.id).all()]
+    return {"id": a.id, "name": a.name, "artist": a.artist, "dynasty": a.dynasty,
+            "material": a.material, "size": a.size, "subject_names": a.subject_names,
+            "description": a.description, "image_url": a.image_url, "thumb_url": a.thumb_url,
+            "source_work_id": a.source_work_id, "rels": rels}
+
+
+@router.get("/artwork/list", dependencies=[Depends(check_token)])
+def admin_artwork_list(keyword: str = "", page: int = Query(1, ge=1), page_size: int = Query(12, ge=1, le=60),
+                       db: Session = Depends(get_db)):
+    q = db.query(Artwork)
+    if keyword:
+        like = f"%{keyword}%"
+        q = q.filter((Artwork.name.like(like)) | (Artwork.artist.like(like)))
+    total = q.count()
+    rows = q.order_by(Artwork.id).offset((page - 1) * page_size).limit(page_size).all()
+    return ApiResp(data={"total": total, "page": page, "items": [_artwork_full(a, db) for a in rows]})
+
+
+@router.post("/artwork", dependencies=[Depends(check_token)])
+def create_artwork(req: ArtworkUpsert, db: Session = Depends(get_db)):
+    obj = Artwork(name=req.name, artist=req.artist, dynasty=req.dynasty, material=req.material,
+                  size=req.size, subject_names=req.subject_names, description=req.description,
+                  image_url=req.image_url, thumb_url=req.image_url, source_work_id=req.source_work_id)
+    db.add(obj)
+    db.flush()
+    for cid in req.concept_ids:
+        db.add(ConceptArtworkRel(concept_id=cid, artwork_id=obj.id, relation_desc=req.relation_desc, weight=2))
+    db.commit()
+    return ApiResp(data={"id": obj.id})
+
+
+@router.put("/artwork/{artwork_id}", dependencies=[Depends(check_token)])
+def update_artwork(artwork_id: int, req: ArtworkUpsert, db: Session = Depends(get_db)):
+    obj = db.get(Artwork, artwork_id)
+    if not obj:
+        raise HTTPException(404, "古画不存在")
+    obj.name, obj.artist, obj.dynasty = req.name, req.artist, req.dynasty
+    obj.material, obj.size, obj.subject_names = req.material, req.size, req.subject_names
+    obj.description, obj.source_work_id = req.description, req.source_work_id
+    if req.image_url:
+        obj.image_url = req.image_url
+        obj.thumb_url = req.image_url
+    db.query(ConceptArtworkRel).filter_by(artwork_id=obj.id).delete()
+    for cid in req.concept_ids:
+        db.add(ConceptArtworkRel(concept_id=cid, artwork_id=obj.id, relation_desc=req.relation_desc, weight=2))
+    db.commit()
+    return ApiResp(data={"id": obj.id})
+
+
+@router.delete("/artwork/{artwork_id}", dependencies=[Depends(check_token)])
+def delete_artwork(artwork_id: int, db: Session = Depends(get_db)):
+    obj = db.get(Artwork, artwork_id)
+    if not obj:
+        raise HTTPException(404, "古画不存在")
+    db.delete(obj)
+    db.commit()
+    return ApiResp()
+
+
+@router.post("/artwork/{artwork_id}/image", dependencies=[Depends(check_token)])
+async def upload_artwork_image(artwork_id: int, file: UploadFile, db: Session = Depends(get_db)):
+    """方式二：本地上传图片文件，保存到 /static/artworks/ 并更新记录"""
+    obj = db.get(Artwork, artwork_id)
+    if not obj:
+        raise HTTPException(404, "古画不存在")
+    suffix = Path(file.filename or "img.jpg").suffix.lower()
+    if suffix not in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
+        raise HTTPException(400, "仅支持 jpg/png/webp/gif")
+    STATIC_ART_DIR.mkdir(parents=True, exist_ok=True)
+    fname = f"artwork_upload_{artwork_id}{suffix}"
+    with open(STATIC_ART_DIR / fname, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    url = f"/static/artworks/{fname}"
+    obj.image_url, obj.thumb_url = url, url
+    db.commit()
+    return ApiResp(data={"image_url": url})
+
+
+@router.post("/artwork/{artwork_id}/svg", dependencies=[Depends(check_token)])
+def regenerate_artwork_svg(artwork_id: int, theme: str = "", db: Session = Depends(get_db)):
+    """方式三：重新生成国风水墨占位图（月/夕阳/青绿 三种主题）"""
+    obj = db.get(Artwork, artwork_id)
+    if not obj:
+        raise HTTPException(404, "古画不存在")
+    from scripts.svg_art import make_svg
+    from scripts.svg_art import _detect_theme
+    theme_name = _detect_theme(obj.name, obj.description, theme)
+    STATIC_ART_DIR.mkdir(parents=True, exist_ok=True)
+    fname = f"artwork_{artwork_id:02d}.svg"
+    (STATIC_ART_DIR / fname).write_text(make_svg(theme_name, obj.name, obj.artist, obj.dynasty), encoding="utf-8")
+    url = f"/static/artworks/{fname}"
+    obj.image_url, obj.thumb_url = url, url
+    db.commit()
+    return ApiResp(data={"image_url": url, "theme": theme_name})
+
+
+# ═══════════ 对仗 CRUD ═══════════
+class CoupletUpsert(BaseModel):
+    concept_id: int
+    word_a: str
+    word_b: str
+    verse: str
+    source: str = ""
+
+
+@router.get("/couplet/list", dependencies=[Depends(check_token)])
+def couplet_list(concept_id: int = 0, db: Session = Depends(get_db)):
+    q = db.query(Couplet)
+    if concept_id:
+        q = q.filter_by(concept_id=concept_id)
+    rows = q.order_by(Couplet.concept_id, Couplet.id).all()
+    items = []
+    for cp in rows:
+        c = db.get(Concept, cp.concept_id)
+        items.append({"id": cp.id, "concept_id": cp.concept_id, "concept_name": c.name if c else "?",
+                      "word_a": cp.word_a, "word_b": cp.word_b, "verse": cp.verse, "source": cp.source})
+    return ApiResp(data=items)
+
+
+@router.post("/couplet", dependencies=[Depends(check_token)])
+def create_couplet(req: CoupletUpsert, db: Session = Depends(get_db)):
+    obj = Couplet(**req.model_dump())
+    db.add(obj)
+    db.commit()
+    return ApiResp(data={"id": obj.id})
+
+
+@router.put("/couplet/{couplet_id}", dependencies=[Depends(check_token)])
+def update_couplet(couplet_id: int, req: CoupletUpsert, db: Session = Depends(get_db)):
+    obj = db.get(Couplet, couplet_id)
+    if not obj:
+        raise HTTPException(404, "对仗不存在")
+    for k, v in req.model_dump().items():
+        setattr(obj, k, v)
+    db.commit()
+    return ApiResp(data={"id": obj.id})
+
+
+@router.delete("/couplet/{couplet_id}", dependencies=[Depends(check_token)])
+def delete_couplet(couplet_id: int, db: Session = Depends(get_db)):
+    obj = db.get(Couplet, couplet_id)
+    if not obj:
+        raise HTTPException(404, "对仗不存在")
+    db.delete(obj)
+    db.commit()
+    return ApiResp()
+
+
+# ═══════════ 意象关联 CRUD 与自动推导 ═══════════
+@router.post("/relation", dependencies=[Depends(check_token)])
+def create_relation(req: RelationUpsert, db: Session = Depends(get_db)):
+    obj = ConceptRelation(**req.model_dump())
+    db.add(obj)
+    db.commit()
+    return ApiResp(data={"id": obj.id})
+
+
+@router.delete("/relation/{relation_id}", dependencies=[Depends(check_token)])
+def delete_relation(relation_id: int, db: Session = Depends(get_db)):
+    obj = db.get(ConceptRelation, relation_id)
+    if not obj:
+        raise HTTPException(404, "关联不存在")
+    db.delete(obj)
+    db.commit()
+    return ApiResp()
+
+
+@router.get("/relation-suggestions", dependencies=[Depends(check_token)])
+def relation_suggestions(db: Session = Depends(get_db)):
+    """基于真实数据自动推导意象关联建议：
+    1. 共现：两意象关联到同一首诗（附共现作品清单）
+    2. 情感同源：两意象的情感标签存在交集
+    已人工建立的关联会标注 exists=true
+    """
+    concepts = {c.id: c for c in db.query(Concept).all()}
+    rels = db.query(ConceptPoetryRel).all()
+    # concept_id -> {poetry_id: [clauses]}
+    by_concept: dict[int, dict[int, list[str]]] = {}
+    for r in rels:
+        by_concept.setdefault(r.concept_id, {}).setdefault(r.poetry_id, []).append(r.clause)
+
+    existing = {(e.from_concept_id, e.to_concept_id) for e in db.query(ConceptRelation).all()}
+    suggestions = []
+    ids = sorted(by_concept.keys())
+    for i, a in enumerate(ids):
+        for b in ids[i + 1:]:
+            shared = set(by_concept[a]) & set(by_concept[b])
+            ca, cb = concepts.get(a), concepts.get(b)
+            if not ca or not cb:
+                continue
+            emo_a = set(ca.emotion_tags.split(",")) - {""}
+            emo_b = set(cb.emotion_tags.split(",")) - {""}
+            shared_emo = sorted(emo_a & emo_b)
+            if not shared and not shared_emo:
+                continue
+            shared_titles = [db.get(Poetry, pid).title for pid in sorted(shared) if db.get(Poetry, pid)]
+            suggestions.append({
+                "from_id": a, "from_name": ca.name, "to_id": b, "to_name": cb.name,
+                "shared_poetries": shared_titles, "shared_emotions": shared_emo,
+                "score": len(shared) * 2 + len(shared_emo),
+                "exists": (a, b) in existing or (b, a) in existing,
+            })
+    suggestions.sort(key=lambda x: x["score"], reverse=True)
+    return ApiResp(data=suggestions)
+
+
+# ═══════════ 批量导入（JSON/CSV 文件上传） ═══════════
+def _parse_one(filename: str, text: str):
+    """解析单个文件 → (fmt, packs, errors, warns)"""
+    from ..service import importer
+    errors: list[str] = []
+    warns: list[str] = []
+    if filename.endswith(".json"):
+        try:
+            packs = importer.parse_json(text)
+        except json.JSONDecodeError as e:
+            raise HTTPException(400, f"{filename}：JSON 解析失败：{e}")
+        fmt = "json"
+    elif filename.endswith(".csv"):
+        fmt0, packs, errors = importer.parse_csv(text)
+        if packs is None:
+            raise HTTPException(400, f"{filename}：" + (errors[0] if errors else "CSV 解析失败"))
+        fmt = f"csv-{fmt0}"
+    else:
+        raise HTTPException(400, f"{filename}：仅支持 .json 或 .csv 文件")
+    for pack in packs:
+        e, w = importer.validate(pack)
+        errors += [f"[{filename}] {x}" for x in e]
+        warns += [f"[{filename}] {x}" for x in w]
+    return fmt, packs, errors, warns
+
+
+@router.post("/import", dependencies=[Depends(check_token)])
+async def import_file(files: list[UploadFile], dry_run: bool = Query(False), db: Session = Depends(get_db)):
+    """批量导入：上传一个或多个 .json / .csv 文件（可本体表+诗文表+JSON 混合同传）
+
+    - dry_run=true 时只校验与预览，不落库
+    - JSON：单意象对象 / {"concepts": [...]} / 顶层数组（结构同 concept_template.json）
+    - CSV：按表头自动识别「诗文关联表」或「意象本体表」
+    - 多文件按上传顺序依次导入：本体表补充骨架信息，诗文表补充关联，JSON 补充对仗/古画/关联
+    """
+    from ..service import importer
+
+    all_packs: list[tuple[str, list[dict]]] = []
+    errors: list[str] = []
+    warns: list[str] = []
+    previews = []
+
+    for f in files:
+        raw = await f.read()
+        try:
+            text = raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            raise HTTPException(400, f"{f.filename}：文件编码需为 UTF-8（Excel 导出 CSV 时请选择「CSV UTF-8」）")
+        fmt, packs, e, w = _parse_one((f.filename or "").lower(), text)
+        errors += e
+        warns += w
+        all_packs.append((fmt, packs))
+        previews.append(importer.build_import_preview(packs, fmt))
+
+    # 结合库状态的校验（新意象必须有情感标签；补充包可省略）
+    for _, packs in all_packs:
+        for pack in packs:
+            errors += importer.validate_against_db(db, pack)
+
+    preview = {
+        "files": len(files),
+        "concept_count": sum(p["concept_count"] for p in previews),
+        "concepts": [n for p in previews for n in p["concepts"]],
+        "poetry_rows": sum(p["poetry_rows"] for p in previews),
+        "rel_rows": sum(p["rel_rows"] for p in previews),
+        "couplet_rows": sum(p["couplet_rows"] for p in previews),
+        "artwork_rows": sum(p["artwork_rows"] for p in previews),
+        "formats": [p["format"] for p in previews],
+    }
+    if errors:
+        return ApiResp(code=1, msg=f"校验未通过：{len(errors)} 处错误",
+                       data={"preview": preview, "errors": errors, "warnings": warns})
+    if dry_run:
+        return ApiResp(msg="校验通过（预览模式，未落库）",
+                       data={"preview": preview, "errors": [], "warnings": warns, "reports": []})
+
+    reports = []
+    try:
+        for _, packs in all_packs:
+            for pack in packs:
+                reports.append(importer.import_concept_data(db, pack))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, f"导入失败，已回滚：{e}")
+    return ApiResp(msg=f"导入完成：{len(reports)} 个意象数据包",
+                   data={"preview": preview, "errors": [], "warnings": warns, "reports": reports})
+
+
+@router.get("/import/template")
+def import_template(format: str = Query("json", pattern="^(json|csv_poetries|csv_concepts)$")):
+    """下载统一导入模板（文件存放于项目根目录 templates/，可直接编辑后上传）"""
+    from fastapi.responses import PlainTextResponse
+
+    files = {
+        "json": ("concept_template.json", JSON_TEMPLATE_FALLBACK),
+        "csv_poetries": ("poetries_template.csv", CSV_POETRIES_FALLBACK),
+        "csv_concepts": ("concepts_template.csv", CSV_CONCEPTS_FALLBACK),
+    }
+    fname, fallback = files[format]
+    tpl_path = Path(__file__).resolve().parent.parent.parent.parent / "templates" / fname
+    content = tpl_path.read_text(encoding="utf-8") if tpl_path.exists() else fallback
+    return PlainTextResponse(
+        content, media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={fname}"},
+    )
+
+
+# ═══════════ 朝代统计重算 ═══════════
+@router.post("/stats/recompute", dependencies=[Depends(check_token)])
+def recompute_stats(db: Session = Depends(get_db)):
+    from scripts.seed_data import DYNASTY_ORDER
+    db.query(DynastyStats).delete()
+    n = 0
+    for c in db.query(Concept).all():
+        counts, seen = {}, set()
+        for r in db.query(ConceptPoetryRel).filter_by(concept_id=c.id).all():
+            dyn = r.poetry.dynasty
+            if (dyn, r.poetry_id) not in seen:
+                seen.add((dyn, r.poetry_id))
+                counts[dyn] = counts.get(dyn, 0) + 1
+        for dyn in DYNASTY_ORDER:
+            if counts.get(dyn):
+                db.add(DynastyStats(concept_id=c.id, dynasty=dyn, count=counts[dyn]))
+                n += 1
+    db.commit()
+    return ApiResp(msg=f"朝代统计已重算（{n} 条）")

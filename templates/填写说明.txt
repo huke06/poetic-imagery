@@ -1,0 +1,47 @@
+意象导入模板 · 填写说明
+════════════════════════════════════════════
+
+【三个模板怎么用】
+
+  推荐流程：① 填 concepts_template.csv（骨架）+ ② 填 poetries_template.csv（诗句）
+            → 批量导入页多选同传 → 完整意象建成
+            ③ 之后用 concept_template.json 写「补充包」追加对仗/古画/关联
+
+────────────────────────────────────────────
+
+【concepts_template.csv · 意象本体表】一行 = 一个意象的骨架信息
+  name            意象名（必填）
+  category        分类：天象/植物/动物/器物/地理/人事
+  aliases         别称，逗号分隔（含逗号时整格加英文双引号）
+  emotion_tags    情感标签，空格分隔（必填，3-5 个）
+  origin_dynasty  起源朝代      peak_dynasty  鼎盛朝代
+  theme_color     主题色（留空，系统按分类自动分配传统色）
+  original_meaning  本义        poetic_meaning  引申义
+  description     演变史（按朝代脉络）
+  ※ 已存在的意象只补全空缺字段，不会覆盖已有内容
+
+【poetries_template.csv · 诗文关联表】一行 = 一条「诗文-意象」关联
+  concept_name    意象名（必填，决定归入哪个意象）
+  concept_category / concept_tags   只在该意象的第一行填，后续行留空
+  title / author  篇目/作者（必填；与库中相同则自动复用，不重复录入）
+  dynasty         朝代：先秦/汉/魏晋/唐/五代/宋/元/明/清
+  writing_type    体裁：诗/词/曲/文
+  content         全文；换行写字面 \n 两个字符；含逗号的格子加英文双引号
+  clause          含意象的诗句（必填，须为 content 中的原文片段）
+  emotion         情感标签，必须是 concept_tags 之一
+  is_classic      1=经典名句  0=否（名句会成为意象卡片封面句）
+  weight          3=千古名句  2=名篇警句  1=一般关联
+  ※ 同一首诗关联多句：多写几行，content 可重复
+
+【concept_template.json · 富格式】
+  功能最全：本体+诗文+对仗+古画+关联五段，可只写部分段落作「补充包」。
+  支持单对象 / {"concepts":[...]} / 顶层数组三种写法。
+
+────────────────────────────────────────────
+
+【通用注意】
+  · CSV 必须 UTF-8 编码：Excel 另存为选「CSV UTF-8(逗号分隔)(*.csv)」
+  · 上传：管理后台 /admin → 批量导入 → 可多选文件
+  · 先「校验预览」再「执行导入」，错误会逐行指出
+  · 重复导入自动幂等去重，同一文件传两遍不会产生重复数据
+  · 命令行也可以：cd backend && .venv/Scripts/python scripts/add_concept.py <文件>

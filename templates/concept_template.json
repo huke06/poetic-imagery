@@ -1,0 +1,57 @@
+{
+  "_说明": {
+    "用途": "意象导入 JSON 模板（功能最全）。可删除不需要的段落（couplets/artworks/relations 均可省略），也可作为已有意象的「补充包」只写部分段落。",
+    "批量": "支持三种写法：① 单个意象对象（如本文件）② {\"concepts\": [意象对象, ...]} ③ 顶层数组 [意象对象, ...]",
+    "上传": "管理后台 /admin → 批量导入 → 上传（可与 CSV 多选同传）",
+    "校验": "emotion 必须在 concept.emotion_tags 内；补充包可省略 emotion_tags（继承库中已有标签）"
+  },
+  "concept": {
+    "name": "意象名（必填）",
+    "category": "天象/植物/动物/器物/地理/人事",
+    "theme_color": "（可留空，按分类自动分配传统色）",
+    "aliases": "别称1,别称2（用于问答关键词匹配，逗号分隔）",
+    "original_meaning": "本义解释（这个事物本身是什么）",
+    "poetic_meaning": "诗词引申义与文化内涵（为什么诗人爱用它）",
+    "emotion_tags": "情感标签1,情感标签2,情感标签3,情感标签4（新意象必填，3-5个）",
+    "origin_dynasty": "起源朝代（如：先秦）",
+    "peak_dynasty": "鼎盛朝代（如：唐）",
+    "description": "演变史：按朝代脉络写意象如何从萌芽到鼎盛再到转型"
+  },
+  "poetries": [
+    {
+      "title": "篇目名",
+      "author": "作者",
+      "dynasty": "朝代（先秦/汉/魏晋/唐/五代/宋/元/明/清）",
+      "writing_type": "体裁：诗/词/曲/文",
+      "content": "全文，换行用 \\n",
+      "rels": [
+        { "clause": "含意象的诗句（须为 content 中的原文片段）", "emotion": "情感标签之一", "is_classic": 1, "weight": 3 }
+      ]
+    },
+    {
+      "title": "同一意象可多首（标题+作者与库中相同会自动复用，不重复录入）",
+      "author": "佚名",
+      "dynasty": "宋",
+      "writing_type": "词",
+      "content": "……",
+      "rels": [
+        { "clause": "……", "emotion": "情感标签之一", "is_classic": 0, "weight": 1 }
+      ]
+    }
+  ],
+  "couplets": [
+    { "word_a": "对仗词甲", "word_b": "对仗词乙", "verse": "例句", "source": "作者《篇目》" }
+  ],
+  "artworks": [
+    {
+      "name": "画名", "artist": "作者", "dynasty": "宋", "material": "绢本设色", "size": "",
+      "subject_names": "中国绘画;山水", "description": "作品简介",
+      "relation_desc": "诗画关联阐释（这幅画与意象的关系）", "weight": 2,
+      "svg_theme": "占位图主题：月/夕阳/青绿（可省略，自动判断）",
+      "image_url": "（可省略，省略时自动生成水墨占位图）"
+    }
+  ],
+  "relations": [
+    { "to": "月", "relation_type": "对仗/共现/情感同源/演变衍生", "description": "关系说明" }
+  ]
+}

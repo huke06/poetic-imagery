@@ -1,0 +1,114 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────── 基础 ─────────── */
+html { scroll-behavior: smooth; }
+body {
+  @apply bg-xuanzhi text-moyan font-hei antialiased;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(43, 76, 126, 0.05), transparent),
+    radial-gradient(ellipse 60% 40% at 90% 110%, rgba(155, 68, 35, 0.04), transparent);
+  background-attachment: fixed;
+}
+
+::selection { background: rgba(43, 76, 126, 0.18); }
+
+/* 细滚动条 */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: rgba(43, 76, 126, 0.25); border-radius: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ─────────── 通用组件 ─────────── */
+@layer components {
+  .card {
+    @apply bg-white/60 backdrop-blur-sm rounded-lg shadow-card transition-all duration-300 border border-black/5;
+  }
+  .card-hover:hover {
+    @apply shadow-card-hover -translate-y-1;
+  }
+  .tag {
+    @apply inline-block px-2.5 py-0.5 text-xs rounded-full border leading-5;
+  }
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-6 py-2.5 bg-shiqing text-white rounded-md
+           hover:bg-shiqing/90 active:scale-[0.98] transition-all text-sm tracking-widest;
+  }
+  .btn-outline {
+    @apply inline-flex items-center gap-2 px-6 py-2.5 border border-shiqing text-shiqing rounded-md
+           hover:bg-shiqing hover:text-white active:scale-[0.98] transition-all text-sm tracking-widest;
+  }
+  .section-title {
+    @apply font-song text-2xl font-semibold text-moyan flex items-center gap-3;
+  }
+}
+
+/* 诗句排版 */
+.verse-text {
+  font-family: 'Kaiti SC', STKaiti, KaiTi, 'Noto Serif SC', serif;
+}
+
+/* 云纹分隔线 */
+.ink-divider {
+  height: 22px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='22' viewBox='0 0 120 22'%3E%3Cpath d='M2 11 Q16 2 30 11 T58 11 T86 11 T118 11' fill='none' stroke='%232B4C7E' stroke-opacity='0.25' stroke-width='1'/%3E%3C/svg%3E");
+  background-repeat: repeat-x;
+  background-position: center;
+}
+
+/* 页面淡入 */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.25s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* 列表渐入 */
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.rise-in { animation: rise-in 0.5s ease both; }
+
+/* 印章 */
+.seal {
+  @apply inline-flex items-center justify-center w-10 h-10 rounded text-xuanzhi text-sm font-kai select-none;
+  background: #9B2C1F;
+  box-shadow: inset 0 0 0 1.5px rgba(245, 241, 232, 0.55);
+  letter-spacing: 0;
+  writing-mode: vertical-lr;
+}
+
+/* 竖排题句 */
+.vertical-verse {
+  writing-mode: vertical-lr;
+  font-family: 'Kaiti SC', STKaiti, KaiTi, 'Noto Serif SC', serif;
+  font-size: 1.35rem;
+  letter-spacing: 0.5em;
+}
+
+/* 明月呼吸 */
+@keyframes moon-breathe {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.025); filter: brightness(1.06); }
+}
+.moon-breathe { animation: moon-breathe 7s ease-in-out infinite; }
+
+/* 区块标题笔触及划线 */
+.section-title {
+  position: relative;
+  padding-bottom: 6px;
+}
+.section-title::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 2.2em;
+  height: 3px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.55;
+}
+
+/* 纸张质感 */
+.paper-texture {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.17 0 0 0 0 0.17 0 0 0 0 0.15 0 0 0 0.035 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+}

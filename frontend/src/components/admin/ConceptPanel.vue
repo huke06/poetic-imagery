@@ -1,0 +1,157 @@
+<template>
+  <div>
+    <div class="flex items-center justify-between mb-4">
+      <p class="text-sm text-qianhui">共 {{ list.length }} 个意象；主题色未选择时按「分类色相族+名称哈希」自动分配传统色</p>
+      <button class="btn-primary !py-1.5 !text-xs" @click="openEdit(null)">新建意象</button>
+    </div>
+    <div class="space-y-2">
+      <div v-for="c in list" :key="c.id" class="card p-4 flex items-center gap-4">
+        <span class="w-9 h-9 rounded-md shrink-0 border border-black/10" :style="{ background: c.theme_color }"></span>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2">
+            <b class="font-song text-lg">{{ c.name }}</b>
+            <span class="text-xs text-qianhui">{{ c.category }}</span>
+            <span v-for="t in c.emotion_tags.split(',').filter(Boolean)" :key="t" class="tag border-black/15 text-qianhui !text-[10px]">{{ t }}</span>
+          </div>
+          <p class="text-xs text-qianhui truncate mt-0.5">{{ c.poetic_meaning }}</p>
+        </div>
+        <button class="btn-outline !py-1 !px-3 !text-xs" @click="openEdit(c)">编辑</button>
+        <button class="btn-outline !py-1 !px-3 !text-xs !border-zhusha/50 !text-zhusha hover:!bg-zhusha" @click="remove(c)">删除</button>
+      </div>
+    </div>
+
+    <!-- 编辑弹窗 -->
+    <Modal :show="editing !== null" :title="form.id ? `编辑意象 · ${form.name}` : '新建意象'" @close="editing = null">
+      <div class="grid grid-cols-2 gap-4">
+        <label class="block">
+          <span class="text-xs text-qianhui">名称 *</span>
+          <input v-model="form.name" class="field" :disabled="!!form.id" />
+        </label>
+        <label class="block">
+          <span class="text-xs text-qianhui">分类</span>
+          <select v-model="form.category" class="field" @change="suggestColor">
+            <option v-for="cat in categories" :key="cat">{{ cat }}</option>
+          </select>
+        </label>
+        <label class="block col-span-2">
+          <span class="text-xs text-qianhui">别称（逗号分隔，用于问答匹配）</span>
+          <input v-model="form.aliases" class="field" />
+        </label>
+        <label class="block col-span-2">
+          <span class="text-xs text-qianhui">本义</span>
+          <textarea v-model="form.original_meaning" rows="2" class="field"></textarea>
+        </label>
+        <label class="block col-span-2">
+          <span class="text-xs text-qianhui">诗词引申义 *</span>
+          <textarea v-model="form.poetic_meaning" rows="3" class="field"></textarea>
+        </label>
+        <label class="block">
+          <span class="text-xs text-qianhui">情感标签（逗号分隔）*</span>
+          <input v-model="form.emotion_tags" class="field" placeholder="如：思乡,怀人" />
+        </label>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="block">
+            <span class="text-xs text-qianhui">起源朝代</span>
+            <input v-model="form.origin_dynasty" class="field" />
+          </label>
+          <label class="block">
+            <span class="text-xs text-qianhui">鼎盛朝代</span>
+            <input v-model="form.peak_dynasty" class="field" />
+          </label>
+        </div>
+        <label class="block col-span-2">
+          <span class="text-xs text-qianhui">演变描述</span>
+          <textarea v-model="form.description" rows="4" class="field"></textarea>
+        </label>
+        <!-- 配色 -->
+        <div class="col-span-2">
+          <div class="flex items-center gap-3">
+            <span class="text-xs text-qianhui">主题色</span>
+            <span class="w-8 h-8 rounded border border-black/10" :style="{ background: form.theme_color }"></span>
+            <code class="text-xs">{{ form.theme_color }}</code>
+            <button class="btn-outline !py-1 !px-3 !text-xs" @click="suggestColor">按分类推荐</button>
+            <span v-if="suggestedName" class="text-xs text-qianhui">当前：{{ suggestedName }}</span>
+          </div>
+          <div class="flex flex-wrap gap-1.5 mt-2">
+            <button v-for="p in palette" :key="p.color" :title="p.color_name"
+              class="w-7 h-7 rounded border-2 transition-transform hover:scale-110"
+              :style="{ background: p.color, borderColor: form.theme_color === p.color ? '#2C2C2C' : 'transparent' }"
+              @click="form.theme_color = p.color; suggestedName = p.color_name"></button>
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-end gap-3 mt-6">
+        <button class="btn-outline !text-xs" @click="editing = null">取消</button>
+        <button class="btn-primary !text-xs" :disabled="!form.name || !form.poetic_meaning" @click="save">保存</button>
+      </div>
+    </Modal>
+  </div>
+</template>
+
+<script setup>
+import { onMounted, ref } from 'vue'
+import {
+  adminCreateConcept, adminDeleteConcept, adminUpdateConcept, getConceptList, getPalette,
+} from '../../api'
+import Modal from './Modal.vue'
+
+const categories = ['天象', '植物', '动物', '器物', '地理', '人事']
+const list = ref([])
+const editing = ref(null)
+const form = ref({})
+const palette = ref([])
+const suggestedName = ref('')
+
+async function load() {
+  const data = await getConceptList()
+  // 管理界面需要完整字段，逐个取详情
+  list.value = await Promise.all(data.items.map(async (c) => {
+    const d = await import('../../api').then((m) => m.getConceptDetail(c.id))
+    return d
+  }))
+}
+
+function openEdit(c) {
+  form.value = c
+    ? { ...c, emotion_tags: c.emotion_tags.join ? c.emotion_tags.join(',') : c.emotion_tags, aliases: c.aliases.join ? c.aliases.join(',') : c.aliases }
+    : { id: 0, name: '', category: '天象', aliases: '', original_meaning: '', poetic_meaning: '', emotion_tags: '', origin_dynasty: '', peak_dynasty: '', description: '', theme_color: '' }
+  editing.value = true
+  suggestedName.value = ''
+  suggestColor()
+}
+
+async function suggestColor() {
+  const data = await getPalette({ name: form.value.name || 'x', category: form.value.category })
+  palette.value = data.family_colors
+  if (!form.value.theme_color && data.suggested) {
+    form.value.theme_color = data.suggested.color
+    suggestedName.value = data.suggested.color_name
+  }
+}
+
+async function save() {
+  const payload = { ...form.value }
+  delete payload.id
+  if (form.value.id) {
+    await adminUpdateConcept(form.value.id, payload)
+  } else {
+    await adminCreateConcept(payload)
+  }
+  editing.value = null
+  await load()
+}
+
+async function remove(c) {
+  if (!confirm(`确定删除意象「${c.name}」？其关联/对仗/统计将级联删除，诗文本体保留。`)) return
+  await adminDeleteConcept(c.id)
+  await load()
+}
+
+onMounted(load)
+</script>
+
+<style scoped>
+.field {
+  @apply mt-1 w-full px-3 py-2 text-sm rounded border border-shiqing/25 bg-white/70 focus:outline-none focus:border-shiqing;
+}
+</style>
