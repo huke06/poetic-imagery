@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/artwork", tags=["艺术品"])
 
 @router.get("/list")
 def artwork_list(
-    dynasty: str = Query("", description="朝代筛选"),
+    dynasty: str = Query("", description="朝代·时期筛选"),
     subject: str = Query("", description="主题筛选"),
     keyword: str = Query("", description="名称/作者关键词"),
     page: int = Query(1, ge=1), page_size: int = Query(12, ge=1, le=50),
@@ -32,7 +32,7 @@ def artwork_list(
     return ApiResp(data={
         "total": total, "page": page, "page_size": page_size,
         "filters": {"dynasties": dynasties, "subjects": subjects},
-        "items": [{"id": a.id, "name": a.name, "artist": a.artist, "dynasty": a.dynasty,
+        "items": [{"id": a.id, "name": a.name, "artist": a.artist, "dynasty_period": a.dynasty_period or a.dynasty,
                    "image_url": a.image_url, "thumb_url": a.thumb_url} for a in rows],
     })
 
@@ -49,7 +49,7 @@ def artwork_detail(artwork_id: int, db: Session = Depends(get_db)):
         if c:
             concepts.append({"id": c.id, "name": c.name, "theme_color": c.theme_color, "relation_desc": r.relation_desc})
     return ApiResp(data={
-        "id": a.id, "name": a.name, "artist": a.artist, "dynasty": a.dynasty,
+        "id": a.id, "name": a.name, "artist": a.artist, "dynasty_period": a.dynasty_period or a.dynasty,
         "material": a.material, "size": a.size,
         "subject_names": [s for s in a.subject_names.split(";") if s],
         "image_url": a.image_url, "thumb_url": a.thumb_url,

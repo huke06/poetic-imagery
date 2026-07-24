@@ -40,7 +40,7 @@ import { getConceptList } from '../api'
 import ConceptCard from '../components/ConceptCard.vue'
 import SectionTitle from '../components/SectionTitle.vue'
 
-const categories = ['', '天象', '植物', '动物', '器物', '地理']
+const categories = ['', '自然类', '社会生活类', '人类自身类', '人造物类', '虚拟类']
 const activeCategory = ref('')
 const keyword = ref('')
 const items = ref([])

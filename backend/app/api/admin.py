@@ -71,7 +71,8 @@ def overview(db: Session = Depends(get_db)):
         "couplets": db.query(Couplet).count(),
         "llm_configured": llm.llm_available(),
         "concept_list": [
-            {"id": c.id, "name": c.name, "category": c.category, "theme_color": c.theme_color}
+            {"id": c.id, "name": c.name, "category_main": c.category_main, "category_sub": c.category_sub,
+             "theme_color": c.theme_color}
             for c in db.query(Concept).order_by(Concept.id).all()
         ],
     })
@@ -116,8 +117,13 @@ def create_concept(req: ConceptUpsert, db: Session = Depends(get_db)):
     if db.query(Concept).filter_by(name=req.name).first():
         raise HTTPException(400, "同名意象已存在")
     payload = req.model_dump()
+    from ..utils.palette import LEGACY_CATEGORY_MAP
+    if not payload.get("category_main") and payload.get("category"):
+        main, sub = LEGACY_CATEGORY_MAP.get(payload["category"], ("自然类", ""))
+        payload["category_main"] = main
+        payload["category_sub"] = sub
     if not payload.get("theme_color"):
-        payload["theme_color"] = assign_color(req.name, req.category)["color"]
+        payload["theme_color"] = assign_color(req.name, payload.get("category_main", ""))["color"]
     obj = Concept(**payload)
     db.add(obj)
     db.commit()

@@ -2,6 +2,8 @@
   "concept": {
     "name": "柳",
     "category": "植物",
+    "category_main": "自然类",
+    "category_sub": "植物",
     "theme_color": "#5B7C5F",
     "aliases": "杨柳,垂柳,柳色,折柳,杨花,柳枝",
     "original_meaning": "柳树，枝条柔长下垂，早春发芽，暮春飞絮（杨花）。生命力极强，插枝即活，古时遍植于河岸、驿道、长亭。",

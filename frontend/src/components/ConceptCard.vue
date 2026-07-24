@@ -6,7 +6,7 @@
       <div class="flex items-start justify-between">
         <div>
           <h3 class="font-song text-3xl font-bold" :style="{ color: concept.theme_color }">{{ concept.name }}</h3>
-          <span class="text-xs text-qianhui">{{ concept.category }}</span>
+          <span class="text-xs text-qianhui">{{ concept.category_main }} · {{ concept.category_sub }}</span>
         </div>
         <img v-if="concept.artwork_thumb" :src="concept.artwork_thumb" :alt="concept.name"
           class="w-14 h-14 object-cover rounded-md border border-black/10 opacity-90 group-hover:opacity-100 transition-opacity" loading="lazy" />

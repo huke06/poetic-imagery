@@ -11,7 +11,8 @@
 
 【concepts_template.csv · 意象本体表】一行 = 一个意象的骨架信息
   name            意象名（必填）
-  category        分类：天象/植物/动物/器物/地理/人事
+  category_main   一级分类：自然类/社会生活类/人类自身类/人造物类/虚拟类
+  category_sub    二级类目：天文气象/山水地理/植物/动物/情感心理/…
   aliases         别称，逗号分隔（含逗号时整格加英文双引号）
   emotion_tags    情感标签，空格分隔（必填，3-5 个）
   origin_dynasty  起源朝代      peak_dynasty  鼎盛朝代
@@ -22,7 +23,7 @@
 
 【poetries_template.csv · 诗文关联表】一行 = 一条「诗文-意象」关联
   concept_name    意象名（必填，决定归入哪个意象）
-  concept_category / concept_tags   只在该意象的第一行填，后续行留空
+  category_main / category_sub / concept_tags   只在该意象的第一行填，后续行留空
   title / author  篇目/作者（必填；与库中相同则自动复用，不重复录入）
   dynasty         朝代：先秦/汉/魏晋/唐/五代/宋/元/明/清
   writing_type    体裁：诗/词/曲/文

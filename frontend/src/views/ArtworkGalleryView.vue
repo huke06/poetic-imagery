@@ -30,7 +30,7 @@
         <img :src="a.thumb_url || a.image_url" :alt="a.name" class="w-full object-cover" loading="lazy" />
         <div class="p-4">
           <h3 class="font-song font-semibold">《{{ a.name }}》</h3>
-          <p class="text-xs text-qianhui mt-1">{{ a.dynasty }} · {{ a.artist }}</p>
+          <p class="text-xs text-qianhui mt-1">{{ a.dynasty_period || a.dynasty }} · {{ a.artist }}</p>
         </div>
       </div>
     </div>
@@ -46,7 +46,7 @@
             <div class="flex items-start justify-between">
               <div>
                 <h3 class="font-song text-2xl font-bold">《{{ detail.name }}》</h3>
-                <p class="text-sm text-qianhui mt-1">{{ detail.dynasty }} · {{ detail.artist }}</p>
+                <p class="text-sm text-qianhui mt-1">{{ detail.dynasty_period }} · {{ detail.artist }}</p>
               </div>
               <div class="flex gap-1.5">
                 <span v-for="s in detail.subject_names" :key="s" class="tag border-shiqing/30 text-shiqing">{{ s }}</span>

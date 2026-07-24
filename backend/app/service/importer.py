@@ -131,13 +131,30 @@ def _norm_rel(r) -> dict:
     return {"clause": clause, "emotion": emotion, "is_classic": int(is_classic), "weight": int(weight)}
 
 
+def _map_legacy_concept(cdata: dict) -> dict:
+    """旧字段 category → category_main + category_sub 自动补齐"""
+    from ..utils.palette import LEGACY_CATEGORY_MAP
+    if cdata.get("category") and not cdata.get("category_main"):
+        main, sub = LEGACY_CATEGORY_MAP.get(cdata["category"], ("自然类", ""))
+        cdata["category_main"] = main
+        cdata["category_sub"] = sub
+    return cdata
+
+
+def _map_legacy_artwork(a: dict) -> dict:
+    a["dynasty_period"] = a.get("dynasty_period") or a.get("dynasty", "")
+    if a.get("imgs") and not a.get("image_url"):
+        a["image_url"] = a["imgs"]
+    return a
+
+
 def import_concept_data(db: Session, data: dict, with_svg: bool = True) -> dict:
     """导入一个意象数据包，返回统计报告。调用方负责 commit/rollback。"""
     report = {"concept": "", "concept_created": False, "poetry_new": 0, "poetry_reused": 0,
               "rel_new": 0, "rel_skipped": 0, "couplet_new": 0, "artwork_new": 0, "artwork_reused": 0,
               "relation_new": 0, "warnings": []}
 
-    cdata = data["concept"]
+    cdata = _map_legacy_concept(data.get("concept", {}))
     name = cdata["name"].strip()
     report["concept"] = name
 
@@ -145,8 +162,9 @@ def import_concept_data(db: Session, data: dict, with_svg: bool = True) -> dict:
     if not concept:
         concept = Concept(
             name=name,
-            category=cdata.get("category", "") or "天象",
-            theme_color=cdata.get("theme_color") or assign_color(name, cdata.get("category", ""))["color"],
+            category_main=cdata.get("category_main", "") or "自然类",
+            category_sub=cdata.get("category_sub", ""),
+            theme_color=cdata.get("theme_color") or assign_color(name, cdata.get("category_main", ""))["color"],
             aliases=cdata.get("aliases", ""),
             original_meaning=cdata.get("original_meaning", ""),
             poetic_meaning=cdata.get("poetic_meaning", ""),
@@ -160,11 +178,16 @@ def import_concept_data(db: Session, data: dict, with_svg: bool = True) -> dict:
         report["concept_created"] = True
     else:
         # 已存在时补充缺失的描述类字段（不覆盖已有内容）
-        for f in ("aliases", "original_meaning", "poetic_meaning", "origin_dynasty", "peak_dynasty", "description"):
-            if cdata.get(f) and not getattr(concept, f):
-                setattr(concept, f, cdata[f])
-        if cdata.get("emotion_tags") and not concept.emotion_tags:
-            concept.emotion_tags = _norm_tags(cdata["emotion_tags"])
+        for f in ("aliases", "original_meaning", "poetic_meaning", "origin_dynasty", "peak_dynasty", "description",
+                  "category_main", "category_sub"):
+            if cdata.get(f) and (not getattr(concept, f, None) or (f in ("category_main", "category_sub") and not getattr(concept, f, None))):
+                if f == "category_main" and not concept.category_main:
+                    concept.category_main = cdata[f]
+                elif f == "category_sub" and not concept.category_sub:
+                    concept.category_sub = cdata[f]
+                elif f not in ("category_main", "category_sub"):
+                    if not getattr(concept, f, None):
+                        setattr(concept, f, cdata[f])
 
     # 诗文与关联
     for p in data.get("poetries", []):
@@ -221,10 +244,14 @@ def import_concept_data(db: Session, data: dict, with_svg: bool = True) -> dict:
             artwork = db.query(Artwork).filter_by(name=a["name"], artist=a.get("artist", "佚名")).first()
             if artwork:
                 report["artwork_reused"] += 1
+                # 旧数据回填 dynasty_period
+                if not artwork.dynasty_period and artwork.dynasty:
+                    artwork.dynasty_period = artwork.dynasty
             else:
+                _map_legacy_artwork(a)
                 fallback = f"/static/artworks/{next(svg_iter)}" if svg_files else ""
                 artwork = Artwork(
-                    name=a["name"], artist=a.get("artist", "佚名"), dynasty=a.get("dynasty", ""),
+                    name=a["name"], artist=a.get("artist", "佚名"), dynasty_period=a.get("dynasty_period", ""),
                     material=a.get("material", ""), size=a.get("size", ""),
                     subject_names=a.get("subject_names", ""),
                     image_url=a.get("image_url") or fallback, thumb_url=a.get("thumb_url") or fallback,
@@ -289,7 +316,9 @@ def parse_csv(text: str) -> tuple[str, list[dict] | None, list[str]]:
                 continue
             packs.append({"concept": {
                 "name": row["name"].strip(),
-                "category": (row.get("category") or "").strip(),
+                "category": (row.get("category") or "").strip(),   # 旧字段兜底
+                "category_main": (row.get("category_main") or row.get("category") or "").strip(),
+                "category_sub": (row.get("category_sub") or "").strip(),
                 "aliases": (row.get("aliases") or "").strip(),
                 "emotion_tags": (row.get("emotion_tags") or "").strip(),
                 "origin_dynasty": (row.get("origin_dynasty") or "").strip(),
@@ -310,16 +339,20 @@ def parse_csv(text: str) -> tuple[str, list[dict] | None, list[str]]:
             if not cname or not title:
                 errors.append(f"第 {i} 行：concept_name 与 title 不能为空")
                 continue
+            # 新字段 category_main/category_sub 兼容旧字段 concept_category
+            cm = (row.get("category_main") or row.get("concept_category") or "").strip()
+            cs = (row.get("category_sub") or "").strip()
+            tags = (row.get("concept_tags") or "").strip()
             pack = packs_map.setdefault(cname, {
-                "concept": {"name": cname,
-                            "category": (row.get("concept_category") or "").strip(),
-                            "emotion_tags": (row.get("concept_tags") or "").strip()},
+                "concept": {"name": cname, "category_main": cm, "category_sub": cs,
+                            "emotion_tags": tags},
                 "poetries_map": {}, "couplets": [], "artworks": [], "relations": []})
-            # 允许后续行补充 category/tags
-            if not pack["concept"].get("category") and (row.get("concept_category") or "").strip():
-                pack["concept"]["category"] = row["concept_category"].strip()
-            if not pack["concept"].get("emotion_tags") and (row.get("concept_tags") or "").strip():
-                pack["concept"]["emotion_tags"] = row["concept_tags"].strip()
+            if not pack["concept"].get("category_main") and cm:
+                pack["concept"]["category_main"] = cm
+            if not pack["concept"].get("category_sub") and cs:
+                pack["concept"]["category_sub"] = cs
+            if not pack["concept"].get("emotion_tags") and tags:
+                pack["concept"]["emotion_tags"] = tags
 
             key = (title, (row.get("author") or "佚名").strip())
             pm = pack["poetries_map"]

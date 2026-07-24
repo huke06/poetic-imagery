@@ -1,11 +1,10 @@
-"""Pydantic 请求/响应模型"""
+"""Pydantic 请求/响应模型 v2"""
 from datetime import datetime
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
 
-# ─────────── 通用 ───────────
 class ApiResp(BaseModel):
     code: int = 0
     msg: str = "ok"
@@ -21,11 +20,12 @@ class PageReq(BaseModel):
 class ConceptBrief(BaseModel):
     id: int
     name: str
-    category: str
+    category_main: str
+    category_sub: str
     emotion_tags: list[str]
     theme_color: str
-    classic_clause: Optional[str] = None   # 代表名句
-    artwork_thumb: Optional[str] = None    # 关联古画缩略图
+    classic_clause: Optional[str] = None
+    artwork_thumb: Optional[str] = None
     poetry_count: int = 0
 
     class Config:
@@ -52,7 +52,8 @@ class CoupletItem(BaseModel):
 class ConceptDetail(BaseModel):
     id: int
     name: str
-    category: str
+    category_main: str
+    category_sub: str
     aliases: list[str]
     original_meaning: str
     poetic_meaning: str
@@ -70,7 +71,9 @@ class ConceptDetail(BaseModel):
 
 class ConceptUpsert(BaseModel):
     name: str
-    category: str = "天象"
+    category: str = ""
+    category_main: str = ""
+    category_sub: str = ""
     original_meaning: str = ""
     poetic_meaning: str = ""
     emotion_tags: str = ""
@@ -78,7 +81,7 @@ class ConceptUpsert(BaseModel):
     peak_dynasty: str = ""
     description: str = ""
     aliases: str = ""
-    theme_color: str = "#2B4C7E"
+    theme_color: str = ""
 
 
 # ─────────── 诗文 ───────────
@@ -107,7 +110,7 @@ class PoetryDetail(BaseModel):
     writing_type: str
     content: str
     clauses: list[str]
-    concepts: list[dict]      # 诗中涉及的意象 [{id, name, clauses:[...]}]
+    concepts: list[dict]
     create_time: datetime
 
 
@@ -125,7 +128,7 @@ class ArtworkBrief(BaseModel):
     id: int
     name: str
     artist: str
-    dynasty: str
+    dynasty_period: str = ""
     image_url: str
     thumb_url: str
 
@@ -134,24 +137,34 @@ class ArtworkDetail(BaseModel):
     id: int
     name: str
     artist: str
-    dynasty: str
+    dynasty_period: str = ""
     material: str
     size: str
     subject_names: list[str]
     image_url: str
     thumb_url: str
     description: str
-    concepts: list[dict]      # 相关意象 [{id, name, relation_desc}]
+    concepts: list[dict]
 
 
 # ─────────── 意象关联 ───────────
+class CooccurrenceStats(BaseModel):
+    same_sentence: int = 0
+    adjacent_sentence: int = 0
+    same_poem: int = 0
+    npmi: float = 0.0
+
+
 class RelationEdge(BaseModel):
+    id: int = 0
     from_id: int
     to_id: int
     from_name: str
     to_name: str
     relation_type: str
     description: str
+    auto: bool = False
+    cooccurrence: CooccurrenceStats | None = None       # 共现统计（NPMI 连线粗细）
 
 
 class RelationGraph(BaseModel):
@@ -166,14 +179,14 @@ class AskReq(BaseModel):
 
 class AskResp(BaseModel):
     answer: str
-    source: str = "local"                 # local / llm
-    references: dict = Field(default_factory=dict)  # {concepts, poetries, artworks}
+    source: str = "local"
+    references: dict = Field(default_factory=dict)
 
 
 class ComposeReq(BaseModel):
     concepts: list[str] = Field(..., min_length=1, max_length=5)
-    style: str = "五言绝句"               # 五言绝句/七言绝句/五言律诗/七言律诗
-    theme: str = ""                       # 可选情感基调
+    style: str = "五言绝句"
+    theme: str = ""
 
 
 class ComposeResp(BaseModel):
@@ -181,7 +194,7 @@ class ComposeResp(BaseModel):
     title: str
     style: str
     source: str = "local"
-    tones: list[str] = Field(default_factory=list)  # 逐句平仄
+    tones: list[dict] = Field(default_factory=list)
     note: str = ""
 
 

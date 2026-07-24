@@ -14,7 +14,9 @@
 CONCEPTS = [
     {
         "name": "月",
-        "category": "天象",
+        "category": "天象",                          # 保留兼容
+        "category_main": "自然类",
+        "category_sub": "天文气象",
         "theme_color": "#2B4C7E",
         "aliases": "月亮,明月,皓月,素月,婵娟,玉盘,冰轮,蟾宫,桂魄,玉钩",
         "original_meaning": "月球，地球唯一的天然卫星，反射太阳光而明。因其阴晴圆缺、升沉有常，成为先民最早观照的天象之一。",
@@ -33,7 +35,9 @@ CONCEPTS = [
     },
     {
         "name": "夕阳",
-        "category": "天象",
+        "category": "天象",                          # 保留兼容
+        "category_main": "自然类",
+        "category_sub": "天文气象",
         "theme_color": "#9B4423",
         "aliases": "落日,斜阳,残阳,斜晖,夕照,晚照,白日",
         "original_meaning": "傍晚西沉的太阳。日光由盛转衰、白昼将尽的时刻，光影绚烂而短暂。",

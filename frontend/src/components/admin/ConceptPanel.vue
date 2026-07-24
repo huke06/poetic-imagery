@@ -10,7 +10,7 @@
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2">
             <b class="font-song text-lg">{{ c.name }}</b>
-            <span class="text-xs text-qianhui">{{ c.category }}</span>
+            <span class="text-xs text-qianhui">{{ c.category_main }} · {{ c.category_sub }}</span>
             <span v-for="t in c.emotion_tags.split(',').filter(Boolean)" :key="t" class="tag border-black/15 text-qianhui !text-[10px]">{{ t }}</span>
           </div>
           <p class="text-xs text-qianhui truncate mt-0.5">{{ c.poetic_meaning }}</p>
@@ -28,9 +28,15 @@
           <input v-model="form.name" class="field" :disabled="!!form.id" />
         </label>
         <label class="block">
-          <span class="text-xs text-qianhui">分类</span>
-          <select v-model="form.category" class="field" @change="suggestColor">
-            <option v-for="cat in categories" :key="cat">{{ cat }}</option>
+          <span class="text-xs text-qianhui">一级分类</span>
+          <select v-model="form.category_main" class="field" @change="form.category_sub = (subCategories[form.category_main] || [])[0] || ''; suggestColor()">
+            <option v-for="cat in mainCategories" :key="cat">{{ cat }}</option>
+          </select>
+        </label>
+        <label class="block">
+          <span class="text-xs text-qianhui">二级类目</span>
+          <select v-model="form.category_sub" class="field">
+            <option v-for="sub in (subCategories[form.category_main] || [])" :key="sub">{{ sub }}</option>
           </select>
         </label>
         <label class="block col-span-2">
@@ -95,7 +101,14 @@ import {
 } from '../../api'
 import Modal from './Modal.vue'
 
-const categories = ['天象', '植物', '动物', '器物', '地理', '人事']
+const mainCategories = ['自然类', '社会生活类', '人类自身类', '人造物类', '虚拟类']
+const subCategories = {
+  '自然类': ['天文气象', '山水地理', '文化地标', '植物', '动物', '自然景观'],
+  '社会生活类': ['战争军事', '仕途游宦', '农耕渔猎', '交通迁徙', '节日民俗'],
+  '人类自身类': ['身体器官', '情感心理', '人格精神'],
+  '人造物类': ['建筑空间', '生活器物', '服饰装饰', '交通工具', '城市与文化空间'],
+  '虚拟类': ['神仙仙境', '神话传说', '鬼怪灵异', '宗教', '概念'],
+}
 const list = ref([])
 const editing = ref(null)
 const form = ref({})
@@ -113,16 +126,16 @@ async function load() {
 
 function openEdit(c) {
   form.value = c
-    ? { ...c, emotion_tags: c.emotion_tags.join ? c.emotion_tags.join(',') : c.emotion_tags, aliases: c.aliases.join ? c.aliases.join(',') : c.aliases }
-    : { id: 0, name: '', category: '天象', aliases: '', original_meaning: '', poetic_meaning: '', emotion_tags: '', origin_dynasty: '', peak_dynasty: '', description: '', theme_color: '' }
+    ? { ...c, emotion_tags: c.emotion_tags ? (c.emotion_tags.join ? c.emotion_tags.join(',') : c.emotion_tags) : '', aliases: c.aliases ? (c.aliases.join ? c.aliases.join(',') : c.aliases) : '', category_main: c.category_main || '自然类', category_sub: c.category_sub || '' }
+    : { id: 0, name: '', category_main: '自然类', category_sub: '天文气象', aliases: '', original_meaning: '', poetic_meaning: '', emotion_tags: '', origin_dynasty: '', peak_dynasty: '', description: '', theme_color: '' }
   editing.value = true
   suggestedName.value = ''
   suggestColor()
 }
 
 async function suggestColor() {
-  const data = await getPalette({ name: form.value.name || 'x', category: form.value.category })
-  palette.value = data.family_colors
+  const data = await getPalette({ name: form.value.name || 'x', category: form.value.category_main || '' })
+  palette.value = data.family_colors || []
   if (!form.value.theme_color && data.suggested) {
     form.value.theme_color = data.suggested.color
     suggestedName.value = data.suggested.color_name

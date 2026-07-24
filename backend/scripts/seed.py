@@ -38,6 +38,26 @@ def split_clauses(content: str) -> list[str]:
     return clauses
 
 
+def _normalize_concept(c: dict) -> dict:
+    """旧 category → 新 category_main + category_sub 自动映射"""
+    from app.utils.palette import LEGACY_CATEGORY_MAP, SUB_CATEGORIES
+    c = dict(c)
+    if c.get("category") and not c.get("category_main"):
+        main, sub = LEGACY_CATEGORY_MAP.get(c["category"], ("自然类", ""))
+        c["category_main"] = main
+        c["category_sub"] = sub
+    return c
+
+
+def _normalize_artwork(a: dict) -> dict:
+    a = dict(a)
+    if not a.get("dynasty_period"):
+        a["dynasty_period"] = a.get("dynasty", "")
+    if a.get("imgs") and not a.get("image_url"):
+        a["image_url"] = a["imgs"]
+    return a
+
+
 def run(keep: bool = False):
     init_db()
     db = SessionLocal()
@@ -54,6 +74,7 @@ def run(keep: bool = False):
         # 1. 意象
         concept_map = {}
         for c in CONCEPTS:
+            c = _normalize_concept(c)
             obj = Concept(**c)
             db.add(obj)
             db.flush()
@@ -86,8 +107,9 @@ def run(keep: bool = False):
             relation_desc = a.pop("relation_desc")
             weight = a.pop("weight")
             a.pop("collection", None)  # 藏馆信息并入描述
+            a_clean = _normalize_artwork(a)
             svg_rel = f"/static/artworks/{svg_files[i]}"
-            obj = Artwork(**a, image_url=svg_rel, thumb_url=svg_rel)
+            obj = Artwork(**a_clean, image_url=svg_rel, thumb_url=svg_rel)
             db.add(obj)
             db.flush()
             art_count += 1

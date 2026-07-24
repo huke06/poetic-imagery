@@ -10,7 +10,7 @@
       <div class="lg:col-span-3 rise-in">
         <div class="flex items-end gap-4">
           <h1 class="font-song text-7xl font-bold concept-glow" :style="{ color: detail.theme_color, textShadow: `0 0 34px ${detail.theme_color}55` }">{{ detail.name }}</h1>
-          <span class="tag mb-3" :style="{ color: detail.theme_color, borderColor: detail.theme_color + '55' }">{{ detail.category }}</span>
+          <span class="tag mb-3" :style="{ color: detail.theme_color, borderColor: detail.theme_color + '55' }">{{ detail.category_main }} · {{ detail.category_sub }}</span>
         </div>
         <p class="mt-2 text-xs text-qianhui tracking-wider">别称：{{ detail.aliases.join('、') || '—' }}</p>
         <p class="mt-5 text-moyan/90 leading-8">{{ detail.original_meaning }}</p>
@@ -115,6 +115,8 @@
           <div v-if="relationEdges.length" class="mt-2 space-y-2">
             <p v-for="e in relationEdges" :key="e.description" class="text-xs leading-6 text-qianhui border-t border-black/5 pt-2">
               <b :style="{ color: detail.theme_color }">「{{ e.relation_type }}」</b>{{ e.description }}
+              <span class="text-[10px] text-qianhui/60 ml-1"
+                v-if="e.cooccurrence?.npmi !== undefined">NPMI={{ e.cooccurrence.npmi.toFixed(3) }}·共{{ e.cooccurrence.same_poem }}篇</span>
               <span v-if="e.auto" class="tag border-zheshi/40 text-zheshi !text-[10px] ml-1">数据推导</span>
             </p>
             <p class="text-[10px] text-qianhui/70 pt-1">实线为人工标注关系，虚线为共现作品自动推导</p>
@@ -205,12 +207,12 @@ const PALETTE = ['#2B4C7E', '#9B4423', '#5B7C5F', '#8A6D3B', '#6E4A7E', '#3A7A7C
 /** 意象名/分类 → 粒子主题 */
 const particleMode = computed(() => {
   const name = detail.value?.name || ''
-  const cat = detail.value?.category || ''
+  const cat = detail.value?.category_main || ''
   if (/月|霜|雪|星|夜/.test(name)) return 'moon'
   if (/夕阳|日|霞|暮/.test(name)) return 'sunset'
   if (/柳|絮|杨/.test(name)) return 'willow'
-  if (cat === '植物') return 'petal'
-  if (cat === '天象') return 'moon'
+  if (cat === '自然类') return 'moon'
+  if (cat === '人类自身类') return 'petal'
   return 'ink'
 })
 
@@ -269,12 +271,16 @@ const relationOption = computed(() => {
         id: String(n.id), name: n.name, symbolSize: n.id === conceptId ? 74 : 62,
         itemStyle: { color: n.theme_color, borderColor: '#F5F1E8', borderWidth: 2, shadowBlur: 8, shadowColor: '#0003' },
       })),
-      links: relationEdges.value.map((e) => ({
-        source: String(e.from_id), target: String(e.to_id),
-        lineStyle: e.auto
-          ? { color: '#9B442366', width: 1.5, type: 'dashed', curveness: 0.15 }
-          : { color: '#2B4C7E55', width: 2, curveness: 0.15 },
-      })),
+      links: relationEdges.value.map((e) => {
+        const shared = e.cooccurrence?.same_poem || 0  // 共现诗数 → 线宽
+        const width = Math.max(0.5, Math.min(6, 1 + shared * 1.2))
+        return {
+          source: String(e.from_id), target: String(e.to_id),
+          lineStyle: e.auto
+            ? { color: '#9B442366', width: Math.max(1, width * 0.7), type: 'dashed', curveness: 0.15 }
+            : { color: '#2B4C7E55', width, curveness: 0.15 },
+        }
+      }),
     }],
   }
 })
