@@ -1,6 +1,5 @@
 """诗文模块接口"""
 import json
-from difflib import SequenceMatcher
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -9,7 +8,7 @@ from ..database import get_db
 from ..models import Concept, ConceptPoetryRel, Poetry
 from ..schemas import ApiResp, PoetrySearchReq
 from ..service.tone_service import poem_tones
-from ..utils import upstream
+from ..utils import llm, upstream
 
 router = APIRouter(prefix="/api/poetry", tags=["诗文"])
 
@@ -18,9 +17,9 @@ def _brief(p: Poetry) -> dict:
     return {"id": p.id, "title": p.title, "author": p.author, "dynasty": p.dynasty, "writing_type": p.writing_type}
 
 
+# ═══════════════ 正文 ═══════════════
 @router.get("/{poetry_id}")
 def poetry_detail(poetry_id: int, db: Session = Depends(get_db)):
-    """诗文全文详情（含诗中意象标注，供高亮跳转）"""
     p = db.get(Poetry, poetry_id)
     if not p:
         raise HTTPException(404, "诗文不存在")
@@ -40,9 +39,9 @@ def poetry_detail(poetry_id: int, db: Session = Depends(get_db)):
     })
 
 
+# ═══════════════ 搜索 ═══════════════
 @router.post("/search")
 def poetry_search(req: PoetrySearchReq, db: Session = Depends(get_db)):
-    """组合搜索：关键词/朝代/作者/体裁（本地库；上游检索可在此扩展透传）"""
     q = db.query(Poetry)
     if req.key:
         like = f"%{req.key}%"
@@ -59,40 +58,52 @@ def poetry_search(req: PoetrySearchReq, db: Session = Depends(get_db)):
                          "items": [_brief(p) for p in rows]})
 
 
+# ═══════════════ 相似作品（2-gram Jaccard 相似度） ═══════════════
+_BIGRAM_CACHE: dict[int, set[str]] = {}
+
+
+def _bigrams(text: str) -> set[str]:
+    """中文 2-gram 分词，用于 Jaccard 相似度"""
+    chars = [ch for ch in text if "一" <= ch <= "鿿"]
+    return {chars[i] + chars[i + 1] for i in range(len(chars) - 1)}
+
+
 @router.get("/{poetry_id}/similar")
 def poetry_similar(poetry_id: int, limit: int = Query(5, ge=1, le=20), db: Session = Depends(get_db)):
-    """相似句推荐：优先透传上游接口；不可用时基于本地句库相似度计算"""
+    """相似句推荐：上游优先；本地 2-gram Jaccard 相似度"""
     p = db.get(Poetry, poetry_id)
     if not p:
         raise HTTPException(404, "诗文不存在")
-    clauses = json.loads(p.clauses or "[]")
-    key = clauses[0] if clauses else p.title
 
     if p.source_writing_id:
         up = upstream.similar_clauses(p.source_writing_id)
         if up:
             return ApiResp(data={"source": "upstream", "items": up})
 
-    # 本地相似度：比较各诗句的字符序列
+    key_clauses = json.loads(p.clauses or "[]")
+    key = key_clauses[0] if key_clauses else p.title
+    my_bigrams = _bigrams(p.content)
+    if not my_bigrams:
+        return ApiResp(data={"source": "local", "key": key, "items": []})
+
     candidates = []
     all_poems = db.query(Poetry).filter(Poetry.id != p.id).all()
     for other in all_poems:
-        other_clauses = json.loads(other.clauses or "[]")
-        best, best_clause = 0.0, ""
-        for c1 in clauses:
-            for c2 in other_clauses:
-                s = SequenceMatcher(None, c1, c2).ratio()
-                if s > best:
-                    best, best_clause = s, c2
-        if best > 0.28:
-            candidates.append({"score": round(best, 3), "clause": best_clause, "poetry": _brief(other)})
+        ob = _bigrams(other.content)
+        if not ob:
+            continue
+        intersection = len(my_bigrams & ob)
+        union = len(my_bigrams | ob)
+        score = intersection / union if union > 0 else 0.0
+        if score > 0.06:  # 有效阈值（共享 ~6% 以上的 2-gram）
+            candidates.append({"score": round(score, 3), "poetry": _brief(other)})
     candidates.sort(key=lambda x: x["score"], reverse=True)
     return ApiResp(data={"source": "local", "key": key, "items": candidates[:limit]})
 
 
+# ═══════════════ 平仄标注 ═══════════════
 @router.get("/{poetry_id}/tones")
 def poetry_tones(poetry_id: int, db: Session = Depends(get_db)):
-    """平仄标注：优先上游；否则本地拼音近似推定（含入声字修正）"""
     p = db.get(Poetry, poetry_id)
     if not p:
         raise HTTPException(404, "诗文不存在")
@@ -105,23 +116,33 @@ def poetry_tones(poetry_id: int, db: Session = Depends(get_db)):
                          "items": poem_tones(clauses)})
 
 
-@router.get("/{poetry_id}/book-links")
-def poetry_book_links(poetry_id: int, db: Session = Depends(get_db)):
-    """古籍出处（透传上游古籍库；本地库无出处数据时返回提示）"""
+# ═══════════════ 诗词翻译（替代原「古籍出处」） ═══════════════
+@router.get("/{poetry_id}/translate")
+def poetry_translate(poetry_id: int, db: Session = Depends(get_db)):
+    """现代汉语翻译：LLM 优先，本地兜底说明"""
     p = db.get(Poetry, poetry_id)
     if not p:
         raise HTTPException(404, "诗文不存在")
-    if p.source_writing_id:
-        up = upstream.writing_book_links(p.source_writing_id)
-        if up:
-            return ApiResp(data={"source": "upstream", "items": up})
-    return ApiResp(data={"source": "local", "items": [],
-                         "note": "本地精选库未收录古籍出处信息；配置上游接口后可自动透传。"})
+
+    if llm.llm_available():
+        prompt = (
+            f"请将下面这首古典诗词逐句翻译为现代汉语，保留原诗的意境和情感基调，语言典雅流畅。"
+            f"每行格式：原文 → 译文\n\n《{p.title}》\n{p.content}"
+        )
+        result = llm.chat([
+            {"role": "system", "content": "你是古典诗词翻译专家，逐句翻译为现代汉语，保留意境。"},
+            {"role": "user", "content": prompt},
+        ], temperature=0.3)
+        if result:
+            return ApiResp(data={"source": "llm", "text": result})
+
+    return ApiResp(data={"source": "local", "text": "",
+                         "note": "诗词翻译需配置大模型。在管理后台「系统配置」中填入 API Key 后即可使用。"})
 
 
+# ═══════════════ 自动笺注 ═══════════════
 @router.get("/{poetry_id}/labelize")
 def poetry_labelize(poetry_id: int, db: Session = Depends(get_db)):
-    """自动笺注：优先上游；本地兜底返回诗中意象标注"""
     p = db.get(Poetry, poetry_id)
     if not p:
         raise HTTPException(404, "诗文不存在")
@@ -135,5 +156,5 @@ def poetry_labelize(poetry_id: int, db: Session = Depends(get_db)):
         c = db.get(Concept, r.concept_id)
         if c:
             items.append({"clause": r.clause, "concept": c.name, "emotion": r.emotion,
-                          "note": f"「{c.name}」意象：{c.poetic_meaning[:60]}……"})
+                          "note": f"「{c.name}」意象：{c.poetic_meaning}"})
     return ApiResp(data={"source": "local", "items": items})

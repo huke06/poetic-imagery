@@ -27,7 +27,7 @@ export const getPoetryDetail = (id) => http.get(`/api/poetry/${id}`)
 export const searchPoetry = (payload) => http.post('/api/poetry/search', payload)
 export const getSimilar = (id) => http.get(`/api/poetry/${id}/similar`)
 export const getTones = (id) => http.get(`/api/poetry/${id}/tones`)
-export const getBookLinks = (id) => http.get(`/api/poetry/${id}/book-links`)
+export const getTranslate = (id) => http.get(`/api/poetry/${id}/translate`)
 export const getLabelize = (id) => http.get(`/api/poetry/${id}/labelize`)
 
 // ─────────── 艺术品 ───────────
