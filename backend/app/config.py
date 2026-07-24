@@ -20,7 +20,7 @@ class Settings:
     # 大模型（可选；未配置时智能助手自动使用本地知识库生成）
     LLM_API_KEY: str = os.getenv("LLM_API_KEY", "")
     LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
-    LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "deepseek-v4-flash")
 
     # 管理后台令牌
     ADMIN_TOKEN: str = os.getenv("ADMIN_TOKEN", "shixiangzhi-admin")

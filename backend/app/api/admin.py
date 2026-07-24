@@ -569,6 +569,26 @@ def import_template(format: str = Query("json", pattern="^(json|csv_poetries|csv
 
 
 # ═══════════ 朝代统计重算 ═══════════
+@router.post("/pregenerate", dependencies=[Depends(check_token)])
+def pregenerate_all(db: Session = Depends(get_db)):
+    """批量预生成所有未翻译/未赏析的诗文（Token 消耗大，建议非高峰期用）"""
+    from ..api.poetry import pregenerate_for_poem
+    poems = db.query(Poetry).all()
+    total = len(poems)
+    new_tr = new_ap = 0
+    for i, p in enumerate(poems):
+        had_tr, had_ap = bool(p.translation), bool(p.appreciation)
+        pregenerate_for_poem(db, p)
+        if not had_tr and p.translation:
+            new_tr += 1
+        if not had_ap and p.appreciation:
+            new_ap += 1
+        if (i + 1) % 20 == 0:
+            db.commit()
+    db.commit()
+    return ApiResp(msg=f"处理 {total} 首，新增翻译 {new_tr} 条、赏析 {new_ap} 条")
+
+
 @router.post("/stats/recompute", dependencies=[Depends(check_token)])
 def recompute_stats(db: Session = Depends(get_db)):
     from scripts.seed_data import DYNASTY_ORDER

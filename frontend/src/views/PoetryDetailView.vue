@@ -71,21 +71,10 @@
             <div v-if="toolData.text" class="text-sm leading-8 whitespace-pre-wrap text-moyan/90">{{ toolData.text }}</div>
             <p v-else class="text-sm text-qianhui py-8 text-center">{{ toolData.note || '暂无翻译' }}</p>
           </div>
-          <!-- 相似作品 -->
-          <div v-else-if="activeTool === 'similar' && toolData">
-            <p class="text-xs text-qianhui mb-4">与 «{{ toolData.key }}» 2-gram 相似作品（{{ toolData.source === 'local' ? '本地计算' : '上游接口' }}）——点击跳转</p>
-            <div v-if="toolData.items?.length" class="space-y-3">
-              <div v-for="(s, i) in toolData.items" :key="i"
-                class="flex items-center justify-between gap-4 p-3 rounded-md bg-white/60 border border-black/5 hover:border-shiqing/30 cursor-pointer transition-all"
-                @click="$router.push(`/poetry/${s.poetry.id}`)">
-                <div>
-                  <p class="font-song font-semibold">{{ s.poetry.title }}</p>
-                  <p class="text-xs text-qianhui mt-1">{{ s.poetry.dynasty }} · {{ s.poetry.author }} （{{ s.poetry.writing_type }}）</p>
-                </div>
-                <span class="text-xs text-qianhui shrink-0">Jaccard {{ (s.score * 100).toFixed(1) }}%</span>
-              </div>
-            </div>
-            <p v-else class="text-sm text-qianhui py-8 text-center">未找到相似作品（2-gram 重叠低于阈值）</p>
+          <!-- 赏析 -->
+          <div v-else-if="activeTool === 'appreciation' && toolData">
+            <div v-if="toolData.text" class="text-sm leading-8 whitespace-pre-wrap text-moyan/90">{{ toolData.text }}</div>
+            <p v-else class="text-sm text-qianhui py-8 text-center">{{ toolData.note || '暂无赏析' }}</p>
           </div>
         </template>
       </div>
@@ -101,7 +90,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getLabelize, getPoetryDetail, getSimilar, getTones, getTranslate } from '../api'
+import { getAppreciation, getLabelize, getPoetryDetail, getSimilar, getTones, getTranslate } from '../api'
 
 const route = useRoute()
 const router = useRouter()
@@ -113,7 +102,7 @@ const tools = [
   { key: 'tones', label: '平仄标注' },
   { key: 'labelize', label: '自动笺注' },
   { key: 'translate', label: '诗词翻译' },
-  { key: 'similar', label: '相似作品' },
+  { key: 'appreciation', label: '赏析' },
 ]
 const activeTool = ref('')
 const toolData = ref(null)
@@ -169,7 +158,7 @@ async function switchTool(key) {
   toolLoading.value = true
   toolData.value = null
   try {
-    const fn = { tones: getTones, labelize: getLabelize, translate: getTranslate, similar: getSimilar }[key]
+    const fn = { tones: getTones, labelize: getLabelize, translate: getTranslate, appreciation: getAppreciation, similar: getSimilar }[key]
     const data = await fn(poetryId)
     loaded[key] = data
     toolData.value = data

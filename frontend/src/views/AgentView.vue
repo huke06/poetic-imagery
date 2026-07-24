@@ -29,7 +29,8 @@
               </div>
               <!-- AI 消息 -->
               <div v-else class="bg-white/80 px-5 py-4 rounded-2xl rounded-tl-sm shadow-card border border-black/5">
-                <p class="text-sm leading-7 whitespace-pre-wrap text-moyan/90">{{ m.text }}</p>
+                <div v-if="m.source === 'llm' || m.source === 'llm_free'" class="text-sm leading-7 text-moyan/90 markdown-body" v-html="md(m.text)"></div>
+                <p v-else class="text-sm leading-7 whitespace-pre-wrap text-moyan/90">{{ m.text }}</p>
                 <!-- 创诗结果 -->
                 <div v-if="m.compose" class="mt-4 bg-xuanzhi rounded-md p-4 border border-shiqing/15">
                   <div class="flex items-center justify-between">
@@ -168,6 +169,21 @@ const quickQuestions = [
 async function scrollBottom() {
   await nextTick()
   if (msgBox.value) msgBox.value.scrollTop = msgBox.value.scrollHeight
+}
+
+/** 简单 Markdown → HTML */
+function md(text) {
+  if (!text) return ''
+  let html = text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code class="bg-black/5 px-1 rounded text-xs">$1</code>')
+    .replace(/^### (.+$)/gm, '<h4 class="font-semibold mt-2 mb-1">$1</h4>')
+    .replace(/^## (.+$)/gm, '<h3 class="font-bold mt-3 mb-1">$1</h3>')
+    .replace(/^- (.+$)/gm, '<li class="ml-4 list-disc">$1</li>')
+    .replace(/\n\n/g, '</p><p>')
+  return '<p>' + html + '</p>'
 }
 
 /** 引用诗篇按 poetry_id 去重（同一首诗的多条句读只显示一个入口） */

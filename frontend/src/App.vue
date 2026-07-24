@@ -16,6 +16,25 @@
             :class="{ 'text-shiqing font-semibold bg-shiqing/5': isActive(item.to) }">
             {{ item.label }}
           </router-link>
+          <!-- 诗文搜索 -->
+          <div class="relative ml-1">
+            <input v-model="searchQ" @keyup.enter="doSearch" @focus="showSearch = true"
+              placeholder="搜诗/作者…" class="w-32 sm:w-40 pl-8 pr-3 py-1.5 text-xs rounded-full border border-shiqing/20 bg-white/50
+              focus:outline-none focus:border-shiqing focus:w-48 transition-all" />
+            <svg class="absolute left-2.5 top-2 w-3.5 h-3.5 text-qianhui" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
+            </svg>
+            <!-- 搜索结果下拉 -->
+            <div v-if="showSearch && searchResults.length" class="absolute right-0 top-10 w-80 max-h-72 overflow-y-auto card shadow-xl z-50 py-1">
+              <div v-for="r in searchResults" :key="r.id"
+                class="px-4 py-2.5 text-sm hover:bg-shiqing/5 cursor-pointer border-b border-black/5 last:border-0"
+                @click="$router.push(`/poetry/${r.id}`); showSearch = false; searchQ = ''">
+                <b class="font-song">{{ r.title }}</b>
+                <span class="text-xs text-qianhui ml-2">{{ r.dynasty }} · {{ r.author }}</span>
+              </div>
+              <div class="px-4 py-2 text-xs text-qianhui text-center">共 {{ searchTotal }} 条，回车查看更多…</div>
+            </div>
+          </div>
         </div>
       </nav>
     </header>
@@ -47,7 +66,9 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { searchPoetry } from './api'
 
 const route = useRoute()
 const navItems = [
@@ -57,4 +78,20 @@ const navItems = [
   { to: '/agent', label: '智能助手' },
 ]
 const isActive = (to) => (to === '/' ? route.path === '/' : route.path.startsWith(to))
+
+const searchQ = ref('')
+const searchResults = ref([])
+const searchTotal = ref(0)
+const showSearch = ref(false)
+
+async function doSearch() {
+  const q = searchQ.value.trim()
+  if (!q) { searchResults.value = []; return }
+  try {
+    const data = await searchPoetry({ key: q, page: 1, page_size: 6 })
+    searchResults.value = data.items
+    searchTotal.value = data.total
+    showSearch.value = true
+  } catch { searchResults.value = [] }
+}
 </script>

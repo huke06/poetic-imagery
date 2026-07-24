@@ -116,13 +116,15 @@ def poetry_tones(poetry_id: int, db: Session = Depends(get_db)):
                          "items": poem_tones(clauses)})
 
 
-# ═══════════════ 诗词翻译（替代原「古籍出处」） ═══════════════
+# ═══════════════ 诗词翻译（DB 缓存 + LLM 生成） ═══════════════
 @router.get("/{poetry_id}/translate")
 def poetry_translate(poetry_id: int, db: Session = Depends(get_db)):
-    """现代汉语翻译：LLM 优先，本地兜底说明"""
+    """现代汉语翻译：DB 缓存优先 → LLM 生成 → 回写缓存"""
     p = db.get(Poetry, poetry_id)
     if not p:
         raise HTTPException(404, "诗文不存在")
+    if p.translation:
+        return ApiResp(data={"source": "cache", "text": p.translation})
 
     if llm.llm_available():
         prompt = (
@@ -134,10 +136,75 @@ def poetry_translate(poetry_id: int, db: Session = Depends(get_db)):
             {"role": "user", "content": prompt},
         ], temperature=0.3)
         if result:
+            p.translation = result
+            db.commit()
             return ApiResp(data={"source": "llm", "text": result})
 
     return ApiResp(data={"source": "local", "text": "",
                          "note": "诗词翻译需配置大模型。在管理后台「系统配置」中填入 API Key 后即可使用。"})
+
+
+# ═══════════════ 诗词赏析（DB 缓存 + LLM 生成） ═══════════════
+@router.get("/{poetry_id}/appreciation")
+def poetry_appreciation(poetry_id: int, db: Session = Depends(get_db)):
+    """文学赏析：DB 缓存优先 → LLM 生成 → 回写缓存"""
+    p = db.get(Poetry, poetry_id)
+    if not p:
+        raise HTTPException(404, "诗文不存在")
+    if p.appreciation:
+        return ApiResp(data={"source": "cache", "text": p.appreciation})
+
+    if llm.llm_available():
+        prompt = (
+            f"请从意象运用、情感表达、艺术手法三个角度，对下面这首诗词做 200-300 字的文学赏析。\n\n"
+            f"《{p.title}》·{p.dynasty}·{p.author}\n{p.content}"
+        )
+        result = llm.chat([
+            {"role": "system", "content": "你是古典诗词鉴赏专家，赏析聚焦意象、情感、手法，简要精当。"},
+            {"role": "user", "content": prompt},
+        ], temperature=0.5)
+        if result:
+            p.appreciation = result
+            db.commit()
+            return ApiResp(data={"source": "llm", "text": result})
+
+    return ApiResp(data={"source": "local", "text": "",
+                         "note": "诗词赏析需配置大模型。在管理后台「系统配置」中填入 API Key 后即可使用。"})
+
+
+# ═══════════════ 批量预生成（导入后调用，后台触发） ═══════════════
+def pregenerate_for_poem(db: Session, p: Poetry):
+    """为单首诗文异步预生成翻译与赏析（已有则跳过）；导入/重建后可调用"""
+    if not llm.llm_available():
+        return
+    if not p.translation:
+        prompt_tr = (
+            f"请将下面这首古典诗词逐句翻译为现代汉语，保留原诗的意境和情感基调，语言典雅流畅。"
+            f"每行格式：原文 → 译文\n\n《{p.title}》\n{p.content}"
+        )
+        try:
+            tr = llm.chat([
+                {"role": "system", "content": "你是古典诗词翻译专家，逐句翻译为现代汉语。"},
+                {"role": "user", "content": prompt_tr},
+            ], temperature=0.3)
+            if tr:
+                p.translation = tr
+        except Exception:
+            pass
+    if not p.appreciation:
+        prompt_ap = (
+            f"请从意象运用、情感表达、艺术手法三个角度，对下面这首诗词做 200-300 字的文学赏析。\n\n"
+            f"《{p.title}》·{p.dynasty}·{p.author}\n{p.content}"
+        )
+        try:
+            ap = llm.chat([
+                {"role": "system", "content": "你是古典诗词鉴赏专家，赏析聚焦意象、情感、手法，简要精当。"},
+                {"role": "user", "content": prompt_ap},
+            ], temperature=0.5)
+            if ap:
+                p.appreciation = ap
+        except Exception:
+            pass
 
 
 # ═══════════════ 自动笺注 ═══════════════

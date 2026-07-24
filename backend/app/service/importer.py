@@ -280,6 +280,16 @@ def import_concept_data(db: Session, data: dict, with_svg: bool = True) -> dict:
             report["relation_new"] += 1
 
     recompute_stats(db, concept)
+    # 自动预生成新诗的翻译与赏析（有 LLM 时）
+    if report["poetry_new"] > 0 and with_svg:
+        try:
+            from ..api.poetry import pregenerate_for_poem
+            for p in data.get("poetries", []):
+                poetry = db.query(Poetry).filter_by(title=p["title"], author=p.get("author", "佚名")).first()
+                if poetry and (not poetry.translation or not poetry.appreciation):
+                    pregenerate_for_poem(db, poetry)
+        except Exception:
+            pass
     return report
 
 

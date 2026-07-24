@@ -45,6 +45,8 @@ class Poetry(Base):
     writing_type: Mapped[str] = mapped_column(String(32), default="诗")  # 诗/词/曲/文 及细类
     content: Mapped[str] = mapped_column(Text)
     clauses: Mapped[str] = mapped_column(Text, default="[]")  # JSON 数组字符串
+    translation: Mapped[str] = mapped_column(Text, default="")    # 缓存的现代汉语翻译
+    appreciation: Mapped[str] = mapped_column(Text, default="")   # 缓存的文学赏析
     create_time: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     concept_rels: Mapped[list["ConceptPoetryRel"]] = relationship(back_populates="poetry", cascade="all, delete-orphan")

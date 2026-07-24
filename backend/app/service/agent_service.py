@@ -111,6 +111,20 @@ def ask(db: Session, question: str) -> dict:
     if not concepts:
         all_c = db.query(Concept).all()
         names = "、".join(f"「{c.name}」" for c in all_c)
+        # LLM 可用时让其自由回答（标注来源非本地库）
+        if llm.llm_available():
+            prompt = (
+                f"用户问题是：「{question}」。本地意象库仅收录：{names}，未命中。"
+                "请结合你的古典诗词知识直接回答这个问题，内容翔实（200 字以内）。"
+                "回答末尾加一句说明：*（本回答由大模型知识生成，未锚定本地意象库）*"
+            )
+            answer = llm.chat([
+                {"role": "system", "content": "你是古典诗词专家，直接基于你的知识作答。"},
+                {"role": "user", "content": prompt},
+            ])
+            if answer:
+                return {"answer": answer, "source": "llm_free",
+                        "references": {"concepts": [], "poetries": [], "artworks": []}}
         examples = "、".join(f"「{c.name}」在古诗里有什么含义？" for c in all_c[:2])
         return {
             "answer": f"抱歉，当前知识库收录的意象为：{names}。您的问题未命中其中任何一个。"
@@ -121,25 +135,33 @@ def ask(db: Session, question: str) -> dict:
 
     poetries, artworks = _gather_context(db, concepts, emotions)
 
-    # 优先走大模型（上下文严格限定本地检索结果）
+    # 优先走大模型
     if llm.llm_available():
         ctx_lines = [f"意象「{c.name}」：{c.poetic_meaning} 情感标签：{c.emotion_tags}" for c in concepts]
         ctx_lines += [f"诗句「{p['clause']}」（{p['emotion']}）出自{p['dynasty']}{p['author']}《{p['title']}》" for p in poetries]
         ctx_lines += [f"古画《{a['name']}》（{a['dynasty']}·{a['artist']}）：{a['relation_desc']}" for a in artworks]
         prompt = (
-            "你是古诗词意象专家。请仅基于以下资料回答用户问题，不得编造资料之外的诗句；"
-            "回答需标注所引诗句的出处，语言典雅简洁，200字以内。\n\n【资料】\n"
+            "你是古诗词意象专家。请基于以下资料回答用户问题。"
+            "标注出处时引用诗题和作者。若资料不足以回答，可结合你的知识补充，但需说明哪些来自资料、哪些来自常识。"
+            "语言典雅简洁，200 字以内。可使用适当 Markdown（**粗体**、`代码`）。\n\n【资料】\n"
             + "\n".join(ctx_lines)
             + f"\n\n【问题】{question}"
         )
         answer = llm.chat([
-            {"role": "system", "content": "你是严谨的古典文学助手，只依据给定资料作答。"},
+            {"role": "system", "content": "你是古典诗词助手，依据资料结合常识作答，标注出处的作品必须来自资料。"},
             {"role": "user", "content": prompt},
         ])
         if answer:
+            # 过滤引用：只保留大模型回答中提到的诗篇（按标题匹配）
+            filtered_poetries = [p for p in poetries[:6] if p["title"] in answer]
+            filtered_artworks = [a for a in artworks[:3] if a["name"] in answer]
             return {"answer": answer, "source": "llm",
                     "references": {"concepts": [{"id": c.id, "name": c.name} for c in concepts],
-                                   "poetries": poetries[:6], "artworks": artworks[:3]}}
+                                   "poetries": filtered_poetries, "artworks": filtered_artworks}}
+        # LLM 调用失败时回落本地模板
+        return {"answer": _local_answer(question, concepts, emotions, poetries), "source": "local",
+                "references": {"concepts": [{"id": c.id, "name": c.name} for c in concepts],
+                               "poetries": poetries[:6], "artworks": artworks[:3]}}
 
     return {"answer": _local_answer(question, concepts, emotions, poetries), "source": "local",
             "references": {"concepts": [{"id": c.id, "name": c.name} for c in concepts],
