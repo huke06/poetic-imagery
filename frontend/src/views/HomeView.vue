@@ -5,7 +5,7 @@
       <!-- 层叠夜空 -->
       <div class="absolute inset-0" style="background: linear-gradient(180deg, #16283F 0%, #2B4C7E 46%, #7A89A0 78%, #F5F1E8 100%)"></div>
       <!-- 明月 -->
-      <div class="absolute right-[12%] top-[14%] w-28 h-28 sm:w-36 sm:h-36 rounded-full moon-breathe"
+      <div class="absolute right-[26%] md:right-[30%] top-[14%] w-28 h-28 sm:w-36 sm:h-36 rounded-full moon-breathe"
         style="background: radial-gradient(circle at 38% 34%, #FDF9E7 0%, #F2E8C9 58%, #E3D5A8 100%);
                box-shadow: 0 0 60px 26px rgba(245, 236, 200, 0.35), 0 0 140px 60px rgba(245, 236, 200, 0.16)"></div>
       <!-- 淡墨群山 -->
