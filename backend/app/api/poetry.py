@@ -221,7 +221,40 @@ def poetry_labelize(poetry_id: int, db: Session = Depends(get_db)):
     items = []
     for r in rels:
         c = db.get(Concept, r.concept_id)
-        if c:
-            items.append({"clause": r.clause, "concept": c.name, "emotion": r.emotion,
-                          "note": f"「{c.name}」意象：{c.poetic_meaning}"})
+        if not c:
+            continue
+        emo = r.emotion
+        # 逐句笺注：LLM 优先，本地基于意象+情感做简短说明
+        note = ""
+        if llm.llm_available():
+            try:
+                prompt = (f"请用一句话（25 字内）解释这句古典诗词中「{c.name}」意象的含义和情感色彩。"
+                          f"诗句：「{r.clause}」 全诗：《{p.title}》（{p.dynasty}·{p.author}） 情感标签：{emo or '未标注'}")
+                result = llm.chat([
+                    {"role": "system", "content": "你是古典诗词笺注专家，每句用 25 字以内简要解释。"},
+                    {"role": "user", "content": prompt},
+                ], temperature=0.3, timeout=10)
+                if result:
+                    note = result.strip()
+            except Exception:
+                pass
+        if not note:
+            # 本地模板：基于具体诗句+情感生成简短笺注
+            meanings = {
+                "怀人": "以月为媒，寄托对远方故人的深切思念",
+                "思乡": "望月兴怀，触发了游子对故乡的无尽眷恋",
+                "孤寂": "月悬夜空，映照出诗人独处时的清冷与落寞",
+                "时空永恒": "借月之亘古长存，反衬人世须臾、历史沧桑",
+                "离愁": "暮色中寄寓离别的怅惘与不舍",
+                "怀古": "以残照旧迹牵引对往昔繁华的追念与兴废之叹",
+                "落寞": "日暮途远，写尽个体在苍茫天地间的萧索与失意",
+                "时光流逝": "夕阳西沉如年华逝水，暗含对光阴不再的深沉感喟",
+                "惜春": "以柳色春景，抒发对春光易逝的婉惜与留恋",
+                "苍凉": "景物萧瑟，意境旷远而悲壮，透出边地特有的荒寒之气",
+                "豪迈": "以开阔之境写慷慨之志，气吞山河而不失悲壮",
+                "厌战": "以征伐之苦与牺牲之痛，表达对和平生活的深沉渴望",
+            }
+            base = meanings.get(emo, f"以「{c.name}」为象，承载了{emo or '诗人'}的情感寄托")
+            note = f"此句写「{r.clause[:12]}…」，{base}。"
+        items.append({"clause": r.clause, "concept": c.name, "emotion": emo, "note": note})
     return ApiResp(data={"source": "local", "items": items})
