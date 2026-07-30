@@ -105,16 +105,14 @@ def send_message(
         db.add(conv)
         db.flush()
 
-    # 2. 构建上下文（最近 6 条消息）
+    # 2. 构建上下文（最近 8 条消息，含用户和 AI，按时间排序）
     prev = (
         db.query(ChatMessage)
         .filter_by(conversation_id=conv.id)
         .order_by(ChatMessage.id.desc())
-        .limit(6).all()
+        .limit(8).all()
     )
-    context_msgs = []
-    for m in reversed(prev):
-        context_msgs.append({"role": m.role, "content": m.text[:300]})
+    context_msgs = [{"role": m.role, "content": m.text[:300]} for m in reversed(prev)]
 
     # 3. 保存用户消息
     um = ChatMessage(conversation_id=conv.id, role="user", text=req.question, source="")
@@ -132,12 +130,9 @@ def send_message(
             answer_text += f"\n\n{data['note']}"
         refs = {}
     else:
-        # ask mode — 传入上下文给 LLM
-        data = agent_service.ask(db, req.question, [m["content"] for m in context_msgs[-4:]])
+        # ask mode — 传入完整对话上下文（含角色）
+        data = agent_service.ask(db, req.question, context_msgs)
         answer_text = data["answer"]
-        if data["source"] == "llm" and context_msgs:
-            # 有上下文时追加少量历史给 LLM（在 agent_service 内部已处理）
-            pass
         refs = data.get("references", {})
 
     # 5. 保存 AI 回复

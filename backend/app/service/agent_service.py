@@ -176,11 +176,11 @@ def _find_mentioned_poems(db: Session, text: str) -> list[dict]:
     return found
 
 
-def ask(db: Session, question: str, context_history: list[str] | None = None) -> dict:
+def ask(db: Session, question: str, context_msgs: list[dict] | None = None) -> dict:
+    """context_msgs: [{"role": "user"|"ai", "content": "..."}] 完整对话历史"""
     concepts = _find_concepts(db, question)
     emotions = _find_emotions(question)
 
-    # 即使没匹配到意象，也尝试匹配提及的诗篇名
     mentioned_poems = _find_mentioned_poems(db, question)
     if mentioned_poems and not concepts:
         # 从提及的诗篇反推概念
@@ -192,12 +192,16 @@ def ask(db: Session, question: str, context_history: list[str] | None = None) ->
 
     if not concepts:
         if llm.llm_available():
+            sys_text = "你是古典诗词专家，直接作答。"
+            if context_msgs:
+                lines = [f"{'用户' if m['role']=='user' else '助手'}：{m['content'][:200]}" for m in context_msgs[-4:]]
+                sys_text += "\n\n=== 对话历史 ===\n你必须根据历史解析指代。\n" + "\n".join(lines)
             prompt = (
                 f"用户问题：「{question}」。请结合古典诗词知识直接回答（200 字内）。"
-                "如果提到具体的诗篇名，请标注**《篇名》**格式以便系统识别。"
+                "如果提到具体的诗篇名，请标注**《篇名》**格式。"
             )
             answer = llm.chat([
-                {"role": "system", "content": "你是古典诗词专家，直接作答。"},
+                {"role": "system", "content": sys_text},
                 {"role": "user", "content": prompt},
             ])
             if answer:
@@ -226,16 +230,23 @@ def ask(db: Session, question: str, context_history: list[str] | None = None) ->
     poetries, artworks, shared_pids = _gather_context(db, concepts, emotions)
 
     if llm.llm_available():
-        # 拼接历史上下文
-        history = ""
-        if context_history:
-            history = "【最近对话】\n" + "\n".join(f"用户：{q[:200]}" for q in context_history[:4]) + "\n\n"
+        # 对话历史放入 system 消息——LLM 必须根据历史解析当前问题中的指代（"他"、"这首诗"等）
+        system_text = "你是严谨的古典诗词助手，只引用资料中出现的篇目，标注出处。"
+        if context_msgs:
+            lines = []
+            for m in context_msgs[-6:]:
+                role = "用户" if m["role"] == "user" else "助手"
+                lines.append(f"{role}：{m['content'][:250]}")
+            if lines:
+                system_text += (
+                    "\n\n=== 对话历史 ===\n"
+                    "用户当前提问可能引用历史内容(如 他/这首诗/该作者 等指代词), "
+                    "你必须根据以下历史解析指代, 不得当作独立新问题。\n"
+                    + "\n".join(lines)
+                )
         prompt = _build_rag_prompt(concepts, poetries, artworks, question, shared_pids)
-        msgs = [{"role": "system", "content": "你是严谨的古典诗词助手，只引用资料中出现的篇目，标注出处。可以结合上面的对话历史理解用户意图。"}]
-        if history:
-            msgs.append({"role": "user", "content": history + prompt})
-        else:
-            msgs.append({"role": "user", "content": prompt})
+        msgs = [{"role": "system", "content": system_text},
+                {"role": "user", "content": prompt}]
         answer = llm.chat(msgs)
         if answer:
             # 引用过滤 + 答案提及的诗篇补充
