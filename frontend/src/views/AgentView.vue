@@ -48,9 +48,11 @@
                 <div v-if="m.refs" class="mt-4 pt-3 border-t border-black/5 space-y-2">
                   <div v-if="m.refs.poetries?.length" class="flex flex-wrap gap-1.5">
                     <button v-for="p in dedupePoetries(m.refs.poetries)" :key="p.poetry_id"
-                      class="tag border-shiqing/30 text-shiqing hover:bg-shiqing hover:text-white transition-colors cursor-pointer"
+                      class="tag border-shiqing/30 text-shiqing hover:bg-shiqing hover:text-white transition-colors cursor-pointer text-xs"
+                      :class="{ '!border-zheshi !text-zheshi bg-amber-50': p.shared }"
+                      :title="p.shared ? '同时包含多个意象' : ''"
                       @click="$router.push(`/poetry/${p.poetry_id}`)">
-                      《{{ p.title }}》
+                      《{{ p.title }}》{{ p.shared ? '🔗' : '' }}
                     </button>
                   </div>
                   <div v-if="m.refs.artworks?.length" class="flex gap-2">
@@ -66,7 +68,7 @@
                     </router-link>
                   </div>
                 </div>
-                <p v-if="m.source" class="text-[10px] text-qianhui/70 mt-2">{{ m.source === 'llm' ? '由大模型生成（基于本地知识库检索）' : '由本地意象知识库生成' }}</p>
+                <p v-if="m.source" class="text-[10px] mt-2" :class="sourceClass(m.source)">{{ sourceLabel(m.source) }}</p>
               </div>
             </div>
           </div>
@@ -184,6 +186,15 @@ function md(text) {
     .replace(/^- (.+$)/gm, '<li class="ml-4 list-disc">$1</li>')
     .replace(/\n\n/g, '</p><p>')
   return '<p>' + html + '</p>'
+}
+
+function sourceClass(s) {
+  return s === 'llm' ? 'text-zhuqing' : s === 'llm_free' ? 'text-zheshi' : 'text-qianhui'
+}
+function sourceLabel(s) {
+  if (s === 'llm') return '✦ 由 DeepSeek 基于本地意象知识库检索作答——所有引用均可溯源'
+  if (s === 'llm_free') return '✦ 由 DeepSeek 基于自身知识作答（未锚定本地意象库）'
+  return '由本地意象知识库模板生成'
 }
 
 /** 引用诗篇按 poetry_id 去重（同一首诗的多条句读只显示一个入口） */
