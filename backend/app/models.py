@@ -63,6 +63,7 @@ class ConceptPoetryRel(Base):
     emotion: Mapped[str] = mapped_column(String(32), default="")
     weight: Mapped[int] = mapped_column(Integer, default=1)
     is_classic: Mapped[int] = mapped_column(Integer, default=0)
+    annotation: Mapped[str] = mapped_column(Text, default="")  # 缓存的逐句笺注
 
     concept: Mapped[Concept] = relationship(back_populates="poetry_rels")
     poetry: Mapped[Poetry] = relationship(back_populates="concept_rels")

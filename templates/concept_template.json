@@ -26,7 +26,7 @@
       "writing_type": "体裁：诗/词/曲/文",
       "content": "全文，换行用 \\n",
       "rels": [
-        { "clause": "含意象的诗句（须为 content 中的原文片段）", "emotion": "情感标签之一", "is_classic": 1, "weight": 3 }
+        { "clause": "含意象的诗句（须为 content 中的原文片段）", "emotion": "情感标签之一", "is_classic": 1, "weight": 3, "annotation": "（可选）逐句笺注——若提供则直接使用，跳过LLM生成" }
       ]
     },
     {

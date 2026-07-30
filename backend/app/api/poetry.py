@@ -223,38 +223,74 @@ def poetry_labelize(poetry_id: int, db: Session = Depends(get_db)):
         c = db.get(Concept, r.concept_id)
         if not c:
             continue
-        emo = r.emotion
-        # 逐句笺注：LLM 优先，本地基于意象+情感做简短说明
-        note = ""
-        if llm.llm_available():
-            try:
-                prompt = (f"请用一句话（25 字内）解释这句古典诗词中「{c.name}」意象的含义和情感色彩。"
-                          f"诗句：「{r.clause}」 全诗：《{p.title}》（{p.dynasty}·{p.author}） 情感标签：{emo or '未标注'}")
-                result = llm.chat([
-                    {"role": "system", "content": "你是古典诗词笺注专家，每句用 25 字以内简要解释。"},
-                    {"role": "user", "content": prompt},
-                ], temperature=0.3, timeout=10)
-                if result:
-                    note = result.strip()
-            except Exception:
-                pass
-        if not note:
-            # 本地模板：基于具体诗句+情感生成简短笺注
-            meanings = {
-                "怀人": "以月为媒，寄托对远方故人的深切思念",
-                "思乡": "望月兴怀，触发了游子对故乡的无尽眷恋",
-                "孤寂": "月悬夜空，映照出诗人独处时的清冷与落寞",
-                "时空永恒": "借月之亘古长存，反衬人世须臾、历史沧桑",
-                "离愁": "暮色中寄寓离别的怅惘与不舍",
-                "怀古": "以残照旧迹牵引对往昔繁华的追念与兴废之叹",
-                "落寞": "日暮途远，写尽个体在苍茫天地间的萧索与失意",
-                "时光流逝": "夕阳西沉如年华逝水，暗含对光阴不再的深沉感喟",
-                "惜春": "以柳色春景，抒发对春光易逝的婉惜与留恋",
-                "苍凉": "景物萧瑟，意境旷远而悲壮，透出边地特有的荒寒之气",
-                "豪迈": "以开阔之境写慷慨之志，气吞山河而不失悲壮",
-                "厌战": "以征伐之苦与牺牲之痛，表达对和平生活的深沉渴望",
-            }
-            base = meanings.get(emo, f"以「{c.name}」为象，承载了{emo or '诗人'}的情感寄托")
-            note = f"此句写「{r.clause[:12]}…」，{base}。"
-        items.append({"clause": r.clause, "concept": c.name, "emotion": emo, "note": note})
+        # 缓存命中直接返回
+        if r.annotation:
+            items.append({"clause": r.clause, "concept": c.name, "emotion": r.emotion, "note": r.annotation})
+            continue
+        # 生成笺注
+        note = _generate_annotation(p, r, c)
+        if note:
+            r.annotation = note
+            db.commit()
+        items.append({"clause": r.clause, "concept": c.name, "emotion": r.emotion, "note": note})
     return ApiResp(data={"source": "local", "items": items})
+
+
+def _generate_annotation(p, r, c) -> str:
+    """生成逐句笺注：LLM 深度解析 → 写入缓存；无 LLM 时用模板"""
+    if llm.llm_available():
+        try:
+            prompt = (
+                f"请对下面这句诗做 80-120 字的文学笺注，围绕「{c.name}」意象展开：\n"
+                f"① 此意象在本句中的具体作用与画面感\n"
+                f"② 它与全诗主题的关联\n"
+                f"③ 所承载的情感（{r.emotion}）如何通过此意象传达\n\n"
+                f"诗句：「{r.clause}」\n全诗：《{p.title}》（{p.dynasty}·{p.author}）\n"
+                f"情感标签：{r.emotion or '未标注'}"
+            )
+            result = llm.chat([
+                {"role": "system", "content": "你是古典诗词笺注专家，做 80-120 字深度解析，聚焦意象在句中的具体作用。"},
+                {"role": "user", "content": prompt},
+            ], temperature=0.4, timeout=15)
+            if result and len(result.strip()) >= 20:
+                return result.strip()
+        except Exception:
+            pass
+    # 本地模板兜底
+    meanings = {
+        "怀人": "以月为媒，寄托对远方故人的深切思念",
+        "思乡": "望月兴怀，触发了游子对故乡的无尽眷恋",
+        "孤寂": "月悬夜空，映照出诗人独处时的清冷与落寞",
+        "时空永恒": "借月之亘古长存，反衬人世须臾、历史沧桑",
+        "离愁": "暮色中寄寓离别的怅惘与不舍",
+        "怀古": "以残照旧迹牵引对往昔繁华的追念与兴废之叹",
+        "落寞": "日暮途远，写尽个体在苍茫天地间的萧索与失意",
+        "时光流逝": "夕阳西沉如年华逝水，暗含对光阴不再的深沉感喟",
+        "惜春": "以柳色春景，抒发对春光易逝的婉惜与留恋",
+        "苍凉": "景物萧瑟，意境旷远而悲壮",
+        "豪迈": "以开阔之境写慷慨之志，气吞山河",
+        "厌战": "以征伐之苦与牺牲之痛，表达对和平的渴望",
+    }
+    base = meanings.get(r.emotion, f"以「{c.name}」为象，承载了{r.emotion or '诗人'}的情感寄托")
+    return f"此句写「{r.clause}」。{base}。{c.poetic_meaning[:60]}……"
+
+
+# 后台批量预生成所有笺注
+@router.post("/{poetry_id}/labelize/generate")
+def generate_labelize(poetry_id: int, db: Session = Depends(get_db)):
+    """为这首诗的所有关联句批量生成并缓存笺注（后台/导入后调用）"""
+    p = db.get(Poetry, poetry_id)
+    if not p:
+        raise HTTPException(404, "诗文不存在")
+    rels = db.query(ConceptPoetryRel).filter_by(poetry_id=p.id, annotation="").all()
+    generated = 0
+    for r in rels:
+        c = db.get(Concept, r.concept_id)
+        if not c:
+            continue
+        note = _generate_annotation(p, r, c)
+        if note:
+            r.annotation = note
+            generated += 1
+    db.commit()
+    return ApiResp(data={"generated": generated, "total": len(rels)})

@@ -126,9 +126,11 @@ def _norm_rel(r) -> dict:
     """关联标注字段归一化（兼容元组/列表/字典三种写法）"""
     if isinstance(r, dict):
         return {"clause": r.get("clause", ""), "emotion": r.get("emotion", ""),
-                "is_classic": int(r.get("is_classic", 0)), "weight": int(r.get("weight", 1))}
+                "is_classic": int(r.get("is_classic", 0)), "weight": int(r.get("weight", 1)),
+                "annotation": r.get("annotation", "")}
     clause, emotion, is_classic, weight = r
-    return {"clause": clause, "emotion": emotion, "is_classic": int(is_classic), "weight": int(weight)}
+    return {"clause": clause, "emotion": emotion, "is_classic": int(is_classic), "weight": int(weight),
+            "annotation": r[4] if len(r) > 4 else ""}
 
 
 def _map_legacy_concept(cdata: dict) -> dict:
