@@ -184,6 +184,34 @@ def _find_mentioned_poems(db: Session, text: str) -> list[dict]:
     return found
 
 
+def _fulltext_search_poems(db: Session, query: str, limit: int = 6) -> list[dict]:
+    """对诗文库做全文检索：标题/作者/内容匹配问题关键词"""
+    # 提取有效关键词（≥2字的片段）
+    import re
+    words = [w for w in re.split(r"[，。！？；、：\s]+", query) if len(w) >= 2][:8]
+    liked = []
+    for w in words:
+        liked.append(Poetry.title.like(f"%{w}%"))
+        liked.append(Poetry.author.like(f"%{w}%"))
+    results = []
+    if liked:
+        from sqlalchemy import or_
+        rows = db.query(Poetry).filter(or_(*liked)).limit(limit * 2).all()
+        for p in rows:
+            if len(results) >= limit:
+                break
+            rels = db.query(ConceptPoetryRel).filter_by(poetry_id=p.id).all()
+            concepts = []
+            for r in rels:
+                c = db.get(Concept, r.concept_id)
+                if c:
+                    concepts.append({"id": c.id, "name": c.name, "clause": r.clause})
+            results.append({"poetry_id": p.id, "title": p.title, "author": p.author,
+                           "dynasty": p.dynasty, "writing_type": p.writing_type,
+                           "concepts": concepts, "content": p.content})
+    return results
+
+
 def ask(db: Session, question: str, context_msgs: list[dict] | None = None) -> dict:
     """context_msgs: [{"role": "user"|"ai", "content": "..."}] 完整对话历史"""
     concepts = _find_concepts(db, question)
@@ -245,9 +273,23 @@ def ask(db: Session, question: str, context_msgs: list[dict] | None = None) -> d
         rest = [p for p in poetries if p["title"] not in mentioned_titles]
         poetries = pinned + rest
 
+    # ==== 全文搜索诗文库 ====
+    search_results = _fulltext_search_poems(db, question, limit=5)
+    existing_ids = {p.get("poetry_id") for p in poetries}
+    for sr in search_results:
+        if sr["poetry_id"] not in existing_ids:
+            poetries.insert(0, {"poetry_id": sr["poetry_id"], "title": sr["title"],
+                                "author": sr["author"], "dynasty": sr["dynasty"],
+                                "writing_type": sr["writing_type"], "clauses": [],
+                                "content": sr["content"], "shared": False, "from_search": True})
+        for cc in sr.get("concepts", []):
+            c = db.get(Concept, cc["id"])
+            if c and c not in concepts:
+                concepts.append(c)
+
     if llm.llm_available():
         # 对话历史放入 system 消息——LLM 必须根据历史解析当前问题中的指代（"他"、"这首诗"等）
-        system_text = "你是严谨的古典诗词助手，只引用资料中出现的篇目，标注出处。"
+        system_text = "你是严谨的古典诗词助手，只引用资料中出现的篇目，标注出处。若资料不足以回答，可回复[搜索:关键词]指令来查库。"
         if context_msgs:
             lines = []
             for m in context_msgs[-6:]:
