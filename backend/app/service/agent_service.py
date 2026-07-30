@@ -154,23 +154,57 @@ def _build_rag_prompt(concepts, poetries, artworks, question, shared_pids):
     return prompt
 
 
+def _find_mentioned_poems(db: Session, text: str) -> list[dict]:
+    """扫描文本中出现的库中诗题，返回该诗及其关联意象的信息"""
+    found = []
+    all_poems = db.query(Poetry).all()
+    # 先找长标题避免短诗题误匹配
+    for p in sorted(all_poems, key=lambda x: -len(x.title)):
+        if p.title in text:
+            rels = db.query(ConceptPoetryRel).filter_by(poetry_id=p.id).all()
+            concepts = []
+            for r in rels:
+                c = db.get(Concept, r.concept_id)
+                if c:
+                    concepts.append({"id": c.id, "name": c.name, "clause": r.clause})
+            found.append({"poetry_id": p.id, "title": p.title, "author": p.author,
+                          "dynasty": p.dynasty, "writing_type": p.writing_type,
+                          "concepts": concepts, "content": p.content})
+    return found
+
+
 def ask(db: Session, question: str, context_history: list[str] | None = None) -> dict:
     concepts = _find_concepts(db, question)
     emotions = _find_emotions(question)
 
+    # 即使没匹配到意象，也尝试匹配提及的诗篇名
+    mentioned_poems = _find_mentioned_poems(db, question)
+    if mentioned_poems and not concepts:
+        # 从提及的诗篇反推概念
+        for mp in mentioned_poems:
+            for c in mp["concepts"]:
+                cc = db.get(Concept, c["id"])
+                if cc and cc.id not in {x.id for x in concepts}:
+                    concepts.append(cc)
+
     if not concepts:
         if llm.llm_available():
             prompt = (
-                f"用户问题：「{question}」。本地意象库未命中。请结合古典诗词知识直接回答（200 字内）。"
-                "末尾加说明：*（本回答由大模型知识生成，未锚定本地意象库）*"
+                f"用户问题：「{question}」。请结合古典诗词知识直接回答（200 字内）。"
+                "如果提到具体的诗篇名，请标注**《篇名》**格式以便系统识别。"
             )
             answer = llm.chat([
                 {"role": "system", "content": "你是古典诗词专家，直接作答。"},
                 {"role": "user", "content": prompt},
             ])
             if answer:
+                # 扫描回答中提到的诗篇名，从库中找到并附为引用
+                mentioned = _find_mentioned_poems(db, answer)
+                mp_refs = [{"poetry_id": m["poetry_id"], "title": m["title"], "author": m["author"],
+                            "dynasty": m["dynasty"], "writing_type": m.get("writing_type",""),
+                            "clauses": m.get("clauses",[]), "shared": False} for m in mentioned]
                 return {"answer": answer, "source": "llm_free",
-                        "references": {"concepts": [], "poetries": [], "artworks": []}}
+                        "references": {"concepts": [], "poetries": mp_refs[:6], "artworks": []}}
 
         all_c = db.query(Concept).all()
         names = "、".join(f"「{c.name}」" for c in all_c)
@@ -196,9 +230,18 @@ def ask(db: Session, question: str, context_history: list[str] | None = None) ->
             msgs.append({"role": "user", "content": prompt})
         answer = llm.chat(msgs)
         if answer:
-            # 引用过滤：出现在回答中的篇目标题
+            # 引用过滤 + 答案提及的诗篇补充
             filtered_p = [p for p in poetries if p["title"] in answer or any(
                 c["clause"] in answer for c in p["clauses"])]
+            # 答案中可能提到了不在 poetries 中的诗篇 → 从 DB 查补
+            mentioned_in_answer = _find_mentioned_poems(db, answer)
+            existing_titles = {p["title"] for p in filtered_p}
+            for mp in mentioned_in_answer:
+                if mp["title"] not in existing_titles:
+                    filtered_p.append({"poetry_id": mp["poetry_id"], "title": mp["title"],
+                                       "author": mp["author"], "dynasty": mp["dynasty"],
+                                       "writing_type": mp["writing_type"], "clauses": [],
+                                       "content": mp["content"], "shared": False})
             filtered_a = [a for a in artworks[:3] if a["name"] in answer]
             return {
                 "answer": answer, "source": "llm",
