@@ -117,9 +117,17 @@ def _gather_context(db: Session, concepts: list[Concept], emotions: list[str]):
     return poetries, artworks, shared_pids
 
 
-def _build_rag_prompt(concepts, poetries, artworks, question, shared_pids):
-    """构建结构化 RAG 上下文：共享作品优先"""
+def _build_rag_prompt(concepts, poetries, artworks, question, shared_pids, mentioned_titles: set = None):
+    """构建结构化 RAG 上下文：共享作品优先，用户提及的诗篇强制首部"""
     parts = []
+    # ⭐ 用户明确提及的诗篇-绝对置顶
+    if mentioned_titles:
+        pinned = [p for p in poetries if p["title"] in mentioned_titles]
+        if pinned:
+            parts.append("【⚠ 用户明确问到的诗篇——以下内容必须仔细研读并引用】")
+            for p in pinned:
+                clauses = "；".join(c["clause"] for c in p["clauses"][:3])
+                parts.append(f"《{p['title']}》（{p['dynasty']}·{p['author']}）全文：{p.get('content', '')[:200]}| 含象句：{clauses}")
     # 意象本体
     for c in concepts:
         parts.append(f"【意象·{c.name}】{c.poetic_meaning[:120]} 情感标签：{c.emotion_tags}")
@@ -228,6 +236,14 @@ def ask(db: Session, question: str, context_msgs: list[dict] | None = None) -> d
         }
 
     poetries, artworks, shared_pids = _gather_context(db, concepts, emotions)
+    # 问题中提及的诗篇必须优先出现——强制置顶
+    mentioned_in_q = _find_mentioned_poems(db, question)
+    if mentioned_in_q:
+        mentioned_titles = {m["title"] for m in mentioned_in_q}
+        # 将提及的诗移到最前
+        pinned = [p for p in poetries if p["title"] in mentioned_titles]
+        rest = [p for p in poetries if p["title"] not in mentioned_titles]
+        poetries = pinned + rest
 
     if llm.llm_available():
         # 对话历史放入 system 消息——LLM 必须根据历史解析当前问题中的指代（"他"、"这首诗"等）
@@ -244,7 +260,8 @@ def ask(db: Session, question: str, context_msgs: list[dict] | None = None) -> d
                     "你必须根据以下历史解析指代, 不得当作独立新问题。\n"
                     + "\n".join(lines)
                 )
-        prompt = _build_rag_prompt(concepts, poetries, artworks, question, shared_pids)
+        mentioned_titles = {m["title"] for m in _find_mentioned_poems(db, question)}
+        prompt = _build_rag_prompt(concepts, poetries, artworks, question, shared_pids, mentioned_titles)
         msgs = [{"role": "system", "content": system_text},
                 {"role": "user", "content": prompt}]
         answer = llm.chat(msgs)
