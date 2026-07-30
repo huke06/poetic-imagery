@@ -155,12 +155,15 @@ def _build_rag_prompt(concepts, poetries, artworks, question, shared_pids):
 
 
 def _find_mentioned_poems(db: Session, text: str) -> list[dict]:
-    """扫描文本中出现的库中诗题，返回该诗及其关联意象的信息"""
+    """扫描文本中《篇名》格式的引用或长标题（≥3字），返回该诗信息"""
     found = []
+    # 先按《篇名》格式精确匹配
+    import re
+    cited = set(re.findall(r"《(.+?)》", text))
+    # 再按长标题（≥3字）模糊匹配
     all_poems = db.query(Poetry).all()
-    # 先找长标题避免短诗题误匹配
     for p in sorted(all_poems, key=lambda x: -len(x.title)):
-        if p.title in text:
+        if p.title in cited or (len(p.title) >= 3 and p.title in text):
             rels = db.query(ConceptPoetryRel).filter_by(poetry_id=p.id).all()
             concepts = []
             for r in rels:
@@ -198,11 +201,16 @@ def ask(db: Session, question: str, context_history: list[str] | None = None) ->
                 {"role": "user", "content": prompt},
             ])
             if answer:
-                # 扫描回答中提到的诗篇名，从库中找到并附为引用
-                mentioned = _find_mentioned_poems(db, answer)
-                mp_refs = [{"poetry_id": m["poetry_id"], "title": m["title"], "author": m["author"],
-                            "dynasty": m["dynasty"], "writing_type": m.get("writing_type",""),
-                            "clauses": m.get("clauses",[]), "shared": False} for m in mentioned]
+                # 严格按《篇名》格式提取回答中明确引用的诗篇
+                import re
+                cited_titles = set(re.findall(r"《(.+?)》", answer))
+                mp_refs = []
+                for ct in cited_titles:
+                    mp = db.query(Poetry).filter_by(title=ct).first()
+                    if mp:
+                        mp_refs.append({"poetry_id": mp.id, "title": mp.title, "author": mp.author,
+                                        "dynasty": mp.dynasty, "writing_type": mp.writing_type,
+                                        "clauses": [], "shared": False})
                 return {"answer": answer, "source": "llm_free",
                         "references": {"concepts": [], "poetries": mp_refs[:6], "artworks": []}}
 
@@ -231,17 +239,23 @@ def ask(db: Session, question: str, context_history: list[str] | None = None) ->
         answer = llm.chat(msgs)
         if answer:
             # 引用过滤 + 答案提及的诗篇补充
-            filtered_p = [p for p in poetries if p["title"] in answer or any(
-                c["clause"] in answer for c in p["clauses"])]
-            # 答案中可能提到了不在 poetries 中的诗篇 → 从 DB 查补
-            mentioned_in_answer = _find_mentioned_poems(db, answer)
+            # 严格过滤：≥3字标题允许子串匹配，短标题（2字）只接受《篇名》格式或完整6字句读
+            filtered_p = [p for p in poetries if f"《{p['title']}》" in answer or (
+                len(p["title"]) >= 3 and p["title"] in answer) or any(
+                len(c["clause"]) >= 6 and c["clause"] in answer for c in p["clauses"])]
+            # 答案中明确引用了《篇名》格式的诗篇 → 从 DB 查补链接
+            import re
+            cited_titles = set(re.findall(r"《(.+?)》", answer))
             existing_titles = {p["title"] for p in filtered_p}
-            for mp in mentioned_in_answer:
-                if mp["title"] not in existing_titles:
-                    filtered_p.append({"poetry_id": mp["poetry_id"], "title": mp["title"],
-                                       "author": mp["author"], "dynasty": mp["dynasty"],
-                                       "writing_type": mp["writing_type"], "clauses": [],
-                                       "content": mp["content"], "shared": False})
+            for ct in cited_titles:
+                if ct in existing_titles:
+                    continue
+                mp = db.query(Poetry).filter_by(title=ct).first()
+                if mp:
+                    filtered_p.append({"poetry_id": mp.id, "title": mp.title,
+                                       "author": mp.author, "dynasty": mp.dynasty,
+                                       "writing_type": mp.writing_type, "clauses": [],
+                                       "content": mp.content, "shared": False})
             filtered_a = [a for a in artworks[:3] if a["name"] in answer]
             return {
                 "answer": answer, "source": "llm",
