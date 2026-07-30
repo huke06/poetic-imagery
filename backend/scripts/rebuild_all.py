@@ -26,6 +26,15 @@ IMPORT_FILES = [
 ]
 
 
+def _seed_admin(db):
+    """创建默认管理员账号"""
+    from app.models import User
+    from app.auth import hash_pw
+    if not db.query(User).filter_by(username="admin").first():
+        db.add(User(username="admin", email="admin@localhost", role="admin", password_hash=hash_pw("admin123")))
+        print("✓ 默认管理员 admin / admin123")
+
+
 def main():
     print("═══ 第一步：种子数据（月 / 夕阳）═══")
     seed_run()
@@ -33,6 +42,7 @@ def main():
     print("\n═══ 第二步：增量示例（柳 / 雁）═══")
     db = SessionLocal()
     try:
+        _seed_admin(db)
         for f in IMPORT_FILES:
             if not f.exists():
                 print(f"[跳过] {f.name} 不存在")

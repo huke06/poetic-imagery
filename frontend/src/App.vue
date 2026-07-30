@@ -16,6 +16,11 @@
             :class="{ 'text-shiqing font-semibold bg-shiqing/5': isActive(item.to) }">
             {{ item.label }}
           </router-link>
+          <router-link v-if="!auth.loggedIn" to="/auth" class="px-3 py-2 text-xs text-qianhui hover:text-shiqing tracking-wider">登录</router-link>
+          <div v-else class="flex items-center gap-2 text-xs">
+            <router-link to="/auth" class="text-moyan/80 hover:text-shiqing tracking-wider">{{ auth.user?.username }}</router-link>
+            <span class="tag border-shiqing/40 text-shiqing !text-[10px]" v-if="auth.user?.role==='admin'">管理员</span>
+          </div>
           <!-- 诗文搜索 -->
           <div class="relative ml-1">
             <input v-model="searchQ" @keyup.enter="doSearch" @focus="showSearch = true"
@@ -66,9 +71,12 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { searchPoetry } from './api'
+import { auth } from './stores/auth'
+
+onMounted(() => auth.init())
 
 const route = useRoute()
 const navItems = [

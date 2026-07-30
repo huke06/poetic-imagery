@@ -70,6 +70,7 @@
         <ArtworkPanel v-else-if="tab === 'artwork'" />
         <RelationPanel v-else-if="tab === 'relation'" />
         <CoupletPanel v-else-if="tab === 'couplet'" />
+        <UserPanel v-else-if="tab === 'users'" />
       </div>
     </template>
   </div>
@@ -87,6 +88,7 @@ import ConceptPanel from '../components/admin/ConceptPanel.vue'
 import ConfigPanel from '../components/admin/ConfigPanel.vue'
 import CoupletPanel from '../components/admin/CoupletPanel.vue'
 import ImportPanel from '../components/admin/ImportPanel.vue'
+import UserPanel from '../components/admin/UserPanel.vue'
 import PoetryPanel from '../components/admin/PoetryPanel.vue'
 import RelationPanel from '../components/admin/RelationPanel.vue'
 
@@ -99,6 +101,7 @@ const tabs = [
   { key: 'artwork', label: '古画管理' },
   { key: 'relation', label: '关联管理' },
   { key: 'couplet', label: '对仗管理' },
+  { key: 'users', label: '用户管理' },
 ]
 const tab = ref('dashboard')
 const route = useRoute()

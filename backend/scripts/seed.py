@@ -58,6 +58,13 @@ def _normalize_artwork(a: dict) -> dict:
     return a
 
 
+def _seed_admin(db):
+    from app.models import User
+    from app.auth import hash_pw
+    if not db.query(User).filter_by(username="admin").first():
+        db.add(User(username="admin", email="admin@localhost", role="admin", password_hash=hash_pw("admin123")))
+
+
 def run(keep: bool = False):
     init_db()
     db = SessionLocal()
@@ -153,7 +160,9 @@ def run(keep: bool = False):
                     stat_count += 1
         print(f"✓ 朝代统计 {stat_count} 条（自动计算）")
 
+        _seed_admin(db)
         db.commit()
+        print("✓ 默认管理员 admin / admin123")
         print("\n种子数据导入完成 ✔")
     except Exception:
         db.rollback()

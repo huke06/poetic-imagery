@@ -14,8 +14,9 @@ from .. import config_store
 from ..config import settings
 from ..database import get_db
 from ..models import (
-    Artwork, Concept, ConceptArtworkRel, ConceptPoetryRel, ConceptRelation, Couplet, DynastyStats, Poetry,
+    Artwork, Concept, ConceptArtworkRel, ConceptPoetryRel, ConceptRelation, Couplet, DynastyStats, Poetry, User,
 )
+from .. import auth as auth_utils
 from ..schemas import ApiResp, ConceptUpsert, RelationUpsert
 from ..utils.palette import assign_color, palette_for_category
 

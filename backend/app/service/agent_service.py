@@ -154,7 +154,7 @@ def _build_rag_prompt(concepts, poetries, artworks, question, shared_pids):
     return prompt
 
 
-def ask(db: Session, question: str) -> dict:
+def ask(db: Session, question: str, context_history: list[str] | None = None) -> dict:
     concepts = _find_concepts(db, question)
     emotions = _find_emotions(question)
 
@@ -184,11 +184,17 @@ def ask(db: Session, question: str) -> dict:
     poetries, artworks, shared_pids = _gather_context(db, concepts, emotions)
 
     if llm.llm_available():
+        # 拼接历史上下文
+        history = ""
+        if context_history:
+            history = "【最近对话】\n" + "\n".join(f"用户：{q[:200]}" for q in context_history[:4]) + "\n\n"
         prompt = _build_rag_prompt(concepts, poetries, artworks, question, shared_pids)
-        answer = llm.chat([
-            {"role": "system", "content": "你是严谨的古典诗词助手，只引用资料中出现的篇目，标注出处。"},
-            {"role": "user", "content": prompt},
-        ])
+        msgs = [{"role": "system", "content": "你是严谨的古典诗词助手，只引用资料中出现的篇目，标注出处。可以结合上面的对话历史理解用户意图。"}]
+        if history:
+            msgs.append({"role": "user", "content": history + prompt})
+        else:
+            msgs.append({"role": "user", "content": prompt})
+        answer = llm.chat(msgs)
         if answer:
             # 引用过滤：出现在回答中的篇目标题
             filtered_p = [p for p in poetries if p["title"] in answer or any(

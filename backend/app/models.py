@@ -141,3 +141,49 @@ class Couplet(Base):
     source: Mapped[str] = mapped_column(String(255), default="")
 
     concept: Mapped[Concept] = relationship(back_populates="couplets")
+
+
+class User(Base):
+    """用户表"""
+    __tablename__ = "user"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    email: Mapped[str] = mapped_column(String(128), default="")
+    password_hash: Mapped[str] = mapped_column(String(255))
+    role: Mapped[str] = mapped_column(String(16), default="user")  # user / admin
+    avatar: Mapped[str] = mapped_column(String(512), default="")
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    is_active: Mapped[int] = mapped_column(Integer, default=1)
+
+    conversations: Mapped[list["ChatConversation"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+
+
+class ChatConversation(Base):
+    """聊天会话"""
+    __tablename__ = "chat_conversation"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(128), default="新对话")
+    source: Mapped[str] = mapped_column(String(16), default="ask")  # ask / compose
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    update_time: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    user: Mapped[User] = relationship(back_populates="conversations")
+    messages: Mapped[list["ChatMessage"]] = relationship(back_populates="conversation", cascade="all, delete-orphan")
+
+
+class ChatMessage(Base):
+    """聊天消息"""
+    __tablename__ = "chat_message"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("chat_conversation.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(16))           # user / ai
+    text: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(16), default="")  # llm / llm_free / local
+    references_json: Mapped[str] = mapped_column(Text, default="{}")  # 引用的 JSON
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    conversation: Mapped[ChatConversation] = relationship(back_populates="messages")

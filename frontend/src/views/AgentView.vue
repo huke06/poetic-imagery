@@ -1,11 +1,33 @@
 <template>
   <div class="max-w-6xl mx-auto px-4 py-10">
-    <SectionTitle sub="轻量 RAG · 回答全部锚定本地意象知识库">智能助手</SectionTitle>
+    <SectionTitle sub="轻量 RAG · 对话记录持久化">智能助手</SectionTitle>
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mt-6">
+      <!-- 对话列表 -->
+      <div class="card p-4 h-[640px] flex flex-col">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-song font-bold text-sm">对话记录</h3>
+          <button class="btn-primary !py-1 !px-3 !text-xs" :disabled="!auth.loggedIn || busy" @click="newConv">
+            + 新对话
+          </button>
+        </div>
+        <div v-if="!auth.loggedIn" class="flex-1 flex items-center justify-center text-xs text-qianhui">
+          <router-link to="/auth" class="text-shiqing hover:underline">登录</router-link>&nbsp;后可以保存对话记录
+        </div>
+        <div v-else-if="!convs.length" class="flex-1 flex items-center justify-center text-xs text-qianhui">
+          暂无对话，点击「新对话」开始
+        </div>
+        <div v-else class="flex-1 overflow-y-auto space-y-1">
+          <div v-for="c in convs" :key="c.id" class="flex items-center gap-2 px-2 py-1.5 rounded text-sm cursor-pointer transition-colors"
+            :class="activeConv === c.id ? 'bg-shiqing/10 text-shiqing font-semibold' : 'hover:bg-black/5 text-moyan/80'"
+            @click="selectConv(c.id)">
+            <span class="flex-1 truncate text-xs">{{ c.title }}</span>
+            <button class="text-zhusha hover:opacity-70 shrink-0 text-xs" @click.stop="delConv(c.id)">×</button>
+          </div>
+        </div>
+      </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-      <!-- 左侧对话区 -->
-      <div class="lg:col-span-2 card flex flex-col h-[640px]">
-        <!-- 模式切换 -->
+      <!-- 对话区 -->
+      <div class="lg:col-span-3 card flex flex-col h-[640px]">
         <div class="flex border-b border-black/5">
           <button v-for="m in modes" :key="m.key"
             class="flex-1 py-3 text-sm tracking-widest transition-colors"
@@ -14,120 +36,63 @@
             {{ m.label }}
           </button>
         </div>
-
-        <!-- 消息列表 -->
         <div ref="msgBox" class="flex-1 overflow-y-auto p-5 space-y-5">
-          <div v-if="!messages.length" class="h-full flex flex-col items-center justify-center text-qianhui gap-3">
+          <div v-if="!msgs.length" class="h-full flex flex-col items-center justify-center text-qianhui gap-3">
             <span class="seal !w-14 !h-14 !text-lg">问</span>
-            <p class="text-sm">问意象、问诗句、问渊源，或让 AI 以意象创诗</p>
+            <p class="text-sm">{{ auth.loggedIn ? '开始新的对话吧' : '登录后可保存对话' }}</p>
           </div>
-          <div v-for="(m, i) in messages" :key="i" class="flex" :class="m.role === 'user' ? 'justify-end' : 'justify-start'">
-            <div class="max-w-[85%] rise-in">
-              <!-- 用户消息 -->
-              <div v-if="m.role === 'user'" class="bg-shiqing text-white px-4 py-2.5 rounded-2xl rounded-tr-sm text-sm leading-7 shadow-card">
-                {{ m.text }}
-              </div>
-              <!-- AI 消息 -->
-              <div v-else class="bg-white/80 px-5 py-4 rounded-2xl rounded-tl-sm shadow-card border border-black/5">
-                <div v-if="m.source === 'llm' || m.source === 'llm_free'" class="text-sm leading-7 text-moyan/90 markdown-body" v-html="md(m.text)"></div>
-                <p v-else class="text-sm leading-7 whitespace-pre-wrap text-moyan/90">{{ m.text }}</p>
-                <!-- 创诗结果 -->
-                <div v-if="m.compose" class="mt-4 bg-xuanzhi rounded-md p-4 border border-shiqing/15">
-                  <div class="flex items-center justify-between">
-                    <h4 class="font-song font-bold text-shiqing">《{{ m.compose.title }}》 <span class="text-xs font-normal text-qianhui">{{ m.compose.style }}</span></h4>
-                    <button class="text-xs text-shiqing hover:underline" @click="copyPoem(m.compose)">复制</button>
-                  </div>
-                  <p class="verse-text text-lg leading-9 mt-2 whitespace-pre-wrap">{{ m.compose.poem }}</p>
-                  <div v-if="m.compose.tones?.length" class="mt-3 text-xs text-qianhui">
-                    <span class="tracking-widest">平仄</span>
-                    <p v-for="(t, ti) in m.compose.tones" :key="ti" class="mt-0.5">{{ t.clause }} <span class="text-shiqing/70 ml-2">{{ t.tone_string }}</span></p>
-                  </div>
-                  <p v-if="m.compose.note" class="text-[11px] text-qianhui/80 mt-2">{{ m.compose.note }}</p>
+          <div v-for="m in msgs" :key="m.id">
+            <div class="flex" :class="m.role === 'user' ? 'justify-end' : 'justify-start'">
+              <div class="max-w-[85%]">
+                <div v-if="m.role === 'user'" class="bg-shiqing text-white px-4 py-2.5 rounded-2xl rounded-tr-sm text-sm leading-7 shadow-card">
+                  {{ m.text }}
                 </div>
-                <!-- 引用 -->
-                <div v-if="m.refs" class="mt-4 pt-3 border-t border-black/5 space-y-2">
-                  <div v-if="m.refs.poetries?.length" class="flex flex-wrap gap-1.5">
-                    <button v-for="p in dedupePoetries(m.refs.poetries)" :key="p.poetry_id"
+                <div v-else class="bg-white/80 px-5 py-4 rounded-2xl rounded-tl-sm shadow-card border border-black/5">
+                  <div v-if="m.source === 'llm' || m.source === 'llm_free'" class="text-sm leading-7 text-moyan/90 markdown-body" v-html="md(m.text)"></div>
+                  <p v-else class="text-sm leading-7 whitespace-pre-wrap text-moyan/90">{{ m.text }}</p>
+                  <!-- 引用 -->
+                  <div v-if="m.references?.poetries?.length" class="mt-4 pt-3 border-t border-black/5 flex flex-wrap gap-1.5">
+                    <button v-for="p in m.references.poetries" :key="p.poetry_id"
                       class="tag border-shiqing/30 text-shiqing hover:bg-shiqing hover:text-white transition-colors cursor-pointer text-xs"
-                      :class="{ '!border-zheshi !text-zheshi bg-amber-50': p.shared }"
-                      :title="p.shared ? '同时包含多个意象' : ''"
-                      @click="$router.push(`/poetry/${p.poetry_id}`)">
-                      《{{ p.title }}》{{ p.shared ? '🔗' : '' }}
+                      @click="$router.push('/poetry/' + p.poetry_id)">
+                      《{{ p.title }}》
                     </button>
                   </div>
-                  <div v-if="m.refs.artworks?.length" class="flex gap-2">
-                    <img v-for="a in m.refs.artworks" :key="a.id" :src="a.thumb_url" :alt="a.name"
-                      class="w-16 h-16 object-cover rounded border border-black/10 cursor-pointer hover:scale-105 transition-transform"
-                      :title="`《${a.name}》${a.dynasty}·${a.artist}`"
-                      @click="$router.push(`/artworks?id=${a.id}`)" />
-                  </div>
-                  <div v-if="m.refs.concepts?.length" class="flex gap-1.5">
-                    <router-link v-for="c in m.refs.concepts" :key="c.id" :to="`/concept/${c.id}`"
-                      class="tag border-zhuqing/40 text-zhuqing hover:bg-zhuqing hover:text-white transition-colors">
-                      意象 · {{ c.name }}
+                  <div v-if="m.references?.concepts?.length" class="mt-2 flex gap-1.5">
+                    <router-link v-for="c in m.references.concepts" :key="c.id" :to="'/concept/' + c.id"
+                      class="tag border-zhuqing/40 text-zhuqing hover:bg-zhuqing hover:text-white transition-colors !text-[10px]">
+                      {{ c.name }}
                     </router-link>
                   </div>
+                  <p v-if="m.source" class="text-[10px] mt-2" :class="sourceClass(m.source)">{{ sourceLabel(m.source) }}</p>
                 </div>
-                <p v-if="m.source" class="text-[10px] mt-2" :class="sourceClass(m.source)">{{ sourceLabel(m.source) }}</p>
               </div>
             </div>
           </div>
-          <div v-if="sending" class="flex">
-            <div class="bg-white/80 px-5 py-3 rounded-2xl rounded-tl-sm shadow-card text-sm text-qianhui">
-              思考中<span class="animate-pulse">…</span>
-            </div>
-          </div>
+          <div v-if="sending" class="flex"><div class="bg-white/80 px-5 py-3 rounded-2xl rounded-tl-sm shadow-card text-sm text-qianhui">思考中<span class="animate-pulse">&hellip;</span></div></div>
         </div>
 
-        <!-- 输入区 -->
         <div class="border-t border-black/5 p-4">
-          <!-- 问答模式 -->
           <div v-if="mode === 'ask'" class="flex gap-3">
-            <input v-model="question" @keyup.enter="sendAsk" placeholder="例如：月亮在古诗里有什么含义？"
-              class="flex-1 px-4 py-2.5 text-sm rounded-full border border-shiqing/25 bg-white/80
-                     focus:outline-none focus:border-shiqing focus:ring-2 focus:ring-shiqing/10" />
+            <input v-model="question" @keyup.enter="sendAsk" placeholder="例如：同时写月和夕阳的诗词有哪些？"
+              class="flex-1 px-4 py-2.5 text-sm rounded-full border border-shiqing/25 bg-white/80 focus:outline-none focus:border-shiqing" />
             <button class="btn-primary !rounded-full" :disabled="sending || !question.trim()" @click="sendAsk">发送</button>
           </div>
-          <!-- 创诗模式 -->
           <div v-else class="space-y-3">
             <div class="flex flex-wrap items-center gap-2 text-sm">
-              <span class="text-qianhui text-xs tracking-widest mr-1">意象</span>
-              <label v-for="c in conceptOptions" :key="c"
-                class="tag cursor-pointer transition-all select-none"
+              <label v-for="c in conceptOptions" :key="c" class="tag cursor-pointer transition-all"
                 :class="selectedConcepts.includes(c) ? '!bg-shiqing !text-white !border-shiqing' : 'border-shiqing/30 text-shiqing hover:bg-shiqing/5'">
                 <input type="checkbox" class="hidden" :value="c" v-model="selectedConcepts" />{{ c }}
               </label>
-              <span class="text-qianhui text-xs tracking-widest ml-3 mr-1">体裁</span>
               <select v-model="style" class="px-3 py-1 text-sm rounded-full border border-shiqing/25 bg-white/80 focus:outline-none">
                 <option v-for="s in styles" :key="s">{{ s }}</option>
               </select>
             </div>
             <div class="flex gap-3">
-              <input v-model="theme" placeholder="情感基调（可选）：如 思乡 / 怀古"
-                class="flex-1 px-4 py-2.5 text-sm rounded-full border border-shiqing/25 bg-white/80 focus:outline-none focus:border-shiqing" />
+              <input v-model="theme" placeholder="情感基调（可选）" class="flex-1 px-4 py-2.5 text-sm rounded-full border border-shiqing/25 bg-white/80 focus:outline-none focus:border-shiqing" />
               <button class="btn-primary !rounded-full" :disabled="sending || !selectedConcepts.length" @click="sendCompose">创诗</button>
             </div>
           </div>
-        </div>
-      </div>
-
-      <!-- 右侧快捷提问 -->
-      <div class="space-y-4">
-        <div class="card p-5">
-          <h3 class="text-sm text-qianhui tracking-widest mb-3">高频问题</h3>
-          <div class="space-y-2">
-            <button v-for="q in quickQuestions" :key="q"
-              class="w-full text-left text-sm px-4 py-2.5 rounded-md bg-white/70 border border-black/5
-                     hover:border-shiqing/40 hover:text-shiqing transition-all leading-6"
-              @click="askQuick(q)">
-              {{ q }}
-            </button>
-          </div>
-        </div>
-        <div class="card p-5 text-xs text-qianhui leading-6">
-          <h3 class="text-sm text-moyan tracking-widest mb-2">关于智能助手</h3>
-          <p>问答基于本地意象知识库检索生成，所有引用诗句与古画均可溯源；配置大模型 API 后可获得更自然的表达。</p>
-          <p class="mt-2">当前知识库收录意象：<router-link to="/concept/1" class="text-shiqing hover:underline">月</router-link>、<router-link to="/concept/2" class="text-shiqing hover:underline">夕阳</router-link>。</p>
         </div>
       </div>
     </div>
@@ -135,126 +100,142 @@
 </template>
 
 <script setup>
-import { onMounted, nextTick, ref } from 'vue'
-import { agentAsk, agentCompose, getConceptList } from '../api'
+import { nextTick, onMounted, ref } from 'vue'
+import { getConceptList } from '../api'
+import { auth } from '../stores/auth'
 import SectionTitle from '../components/SectionTitle.vue'
+import axios from 'axios'
 
-const modes = [
-  { key: 'ask', label: '意象问答' },
-  { key: 'compose', label: '意象创诗' },
-]
+const modes = [{ key: 'ask', label: '意象问答' }, { key: 'compose', label: '意象创诗' }]
 const mode = ref('ask')
-const messages = ref([])
+const msgs = ref([])
 const sending = ref(false)
+const busy = ref(false)
 const msgBox = ref(null)
-
 const question = ref('')
 const conceptOptions = ref([])
 const selectedConcepts = ref(['月'])
 const styles = ['五言绝句', '七言绝句', '五言律诗', '七言律诗']
 const style = ref('七言绝句')
 const theme = ref('')
+const convs = ref([])
+const activeConv = ref(0)
 
-onMounted(async () => {
-  const data = await getConceptList()
-  conceptOptions.value = data.items.map((c) => c.name)
-})
+function authHeaders() {
+  const t = auth.token
+  return t ? { Authorization: `Bearer ${t}` } : {}
+}
 
-const quickQuestions = [
-  '月亮在古诗里有什么含义？',
-  '表达思乡之情的月亮名句有哪些？',
-  '夕阳为什么总让人感到落寞？',
-  '夕阳在怀古诗里扮演什么角色？',
-  '哪些作品同时写到了月和夕阳？',
-]
+async function afterSend(data) {
+  activeConv.value = data.conversation_id
+  await loadConvs()
+  if (data.message) {
+    msgs.value.push({ id: Date.now(), role: 'ai', text: data.message.text, source: data.message.source, references: data.message.references })
+  }
+  await scrollBottom()
+}
+
+async function loadConvs() {
+  if (!auth.loggedIn) return
+  try {
+    const { data } = await axios.get('/api/chat/conversations', { headers: authHeaders() })
+    convs.value = data.data
+  } catch { convs.value = [] }
+}
+
+async function selectConv(id) {
+  activeConv.value = id
+  msgs.value = []
+  try {
+    const { data } = await axios.get(`/api/chat/conversations/${id}/messages`, { headers: authHeaders() })
+    msgs.value = data.data.map(m => ({ ...m, references: m.references || {} }))
+  } catch { msgs.value = [] }
+  await scrollBottom()
+}
+
+async function newConv() {
+  busy.value = true
+  try {
+    const { data } = await axios.post('/api/chat/conversations', null, { headers: authHeaders(), params: { source: mode.value } })
+    activeConv.value = data.data.id
+    msgs.value = []
+    await loadConvs()
+  } finally { busy.value = false }
+}
+
+async function delConv(id) {
+  if (!confirm('删除此对话？')) return
+  await axios.delete(`/api/chat/conversations/${id}`, { headers: authHeaders() })
+  if (activeConv.value === id) { activeConv.value = 0; msgs.value = [] }
+  await loadConvs()
+}
+
+async function sendToServer(payload) {
+  if (!auth.loggedIn || !activeConv.value) {
+    try { await newConv() } catch { /* 未登录时不建会话，用旧接口兜底 */ }
+  }
+  const convId = activeConv.value
+  if (auth.loggedIn && convId) {
+    const { data } = await axios.post('/api/chat/send', { conversation_id: convId, ...payload }, { headers: authHeaders() })
+    return data.data
+  }
+  // 未登录兜底：直接用旧 agent 接口（不存历史）
+  if (payload.mode === 'compose') {
+    const { data: d } = await axios.post('/api/agent/compose', { concepts: payload.concepts, style: payload.style, theme: payload.theme || '' })
+    const poem = d.data
+    return { conversation_id: 0, title: '', message: { id: 0, role: 'ai', source: poem.source, text: `为您创作一首${poem.style}：\n\n**《${poem.title}》**\n\n${poem.poem}\n\n平仄：\n${(poem.tones||[]).map(t => '· '+t.clause+' '+t.tone_string).join('\n')}`, references: {} } }
+  }
+  const { data: d } = await axios.post('/api/agent/ask', { question: payload.question })
+  return { conversation_id: 0, title: '', message: { id: 0, role: 'ai', text: d.data.answer, source: d.data.source, references: d.data.references || {} } }
+}
+
+async function sendAsk() {
+  const q = question.value.trim()
+  if (!q || sending.value) return
+  msgs.value.push({ id: Date.now(), role: 'user', text: q })
+  question.value = ''
+  sending.value = true
+  await scrollBottom()
+  try { await afterSend(await sendToServer({ mode: 'ask', question: q })) }
+  catch { msgs.value.push({ id: Date.now(), role: 'ai', text: '服务暂不可用，请稍后再试。' }) }
+  finally { sending.value = false; await scrollBottom() }
+}
+
+async function sendCompose() {
+  if (!selectedConcepts.value.length || sending.value) return
+  const desc = `「${selectedConcepts.value.join('、')}」${style.value}${theme.value ? '（' + theme.value + '）' : ''}`
+  msgs.value.push({ id: Date.now(), role: 'user', text: desc })
+  sending.value = true
+  await scrollBottom()
+  try { await afterSend(await sendToServer({ mode: 'compose', concepts: selectedConcepts.value, style: style.value, theme: theme.value })) }
+  catch { msgs.value.push({ id: Date.now(), role: 'ai', text: '创诗失败，请稍后再试。' }) }
+  finally { sending.value = false; await scrollBottom() }
+}
 
 async function scrollBottom() {
   await nextTick()
   if (msgBox.value) msgBox.value.scrollTop = msgBox.value.scrollHeight
 }
 
-/** 简单 Markdown → HTML */
+function sourceClass(s) { return s === 'llm' ? 'text-zhuqing' : s === 'llm_free' ? 'text-zheshi' : 'text-qianhui' }
+function sourceLabel(s) {
+  if (s === 'llm') return '✦ DeepSeek 基于本地意象知识库作答'
+  if (s === 'llm_free') return '✦ DeepSeek 自由回答（未锚定意象库）'
+  return '由本地知识库生成'
+}
 function md(text) {
   if (!text) return ''
-  let html = text
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+  return '<p>' + text.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/`(.+?)`/g, '<code class="bg-black/5 px-1 rounded text-xs">$1</code>')
-    .replace(/^### (.+$)/gm, '<h4 class="font-semibold mt-2 mb-1">$1</h4>')
-    .replace(/^## (.+$)/gm, '<h3 class="font-bold mt-3 mb-1">$1</h3>')
-    .replace(/^- (.+$)/gm, '<li class="ml-4 list-disc">$1</li>')
-    .replace(/\n\n/g, '</p><p>')
-  return '<p>' + html + '</p>'
+    .replace(/\n\n/g, '</p><p>').replace(/^- (.+$)/gm, '<li class="ml-4 list-disc">$1</li>') + '</p>'
 }
 
-function sourceClass(s) {
-  return s === 'llm' ? 'text-zhuqing' : s === 'llm_free' ? 'text-zheshi' : 'text-qianhui'
-}
-function sourceLabel(s) {
-  if (s === 'llm') return '✦ 由 DeepSeek 基于本地意象知识库检索作答——所有引用均可溯源'
-  if (s === 'llm_free') return '✦ 由 DeepSeek 基于自身知识作答（未锚定本地意象库）'
-  return '由本地意象知识库模板生成'
-}
-
-/** 引用诗篇按 poetry_id 去重（同一首诗的多条句读只显示一个入口） */
-function dedupePoetries(list) {
-  const seen = new Set()
-  return (list || []).filter((p) => {
-    if (seen.has(p.poetry_id)) return false
-    seen.add(p.poetry_id)
-    return true
-  })
-}
-
-async function sendAsk() {
-  const q = question.value.trim()
-  if (!q || sending.value) return
-  messages.value.push({ role: 'user', text: q })
-  question.value = ''
-  sending.value = true
-  await scrollBottom()
-  try {
-    const data = await agentAsk(q)
-    messages.value.push({ role: 'ai', text: data.answer, refs: data.references, source: data.source })
-  } catch {
-    messages.value.push({ role: 'ai', text: '服务暂时不可用，请稍后再试。' })
-  } finally {
-    sending.value = false
-    await scrollBottom()
-  }
-}
-
-function askQuick(q) {
-  mode.value = 'ask'
-  question.value = q
-  sendAsk()
-}
-
-async function sendCompose() {
-  if (!selectedConcepts.value.length || sending.value) return
-  const desc = `以「${selectedConcepts.value.join('、')}」作${style.value}${theme.value ? '（' + theme.value + '）' : ''}`
-  messages.value.push({ role: 'user', text: desc })
-  sending.value = true
-  await scrollBottom()
-  try {
-    const data = await agentCompose({ concepts: selectedConcepts.value, style: style.value, theme: theme.value })
-    if (data.poem) {
-      messages.value.push({ role: 'ai', text: '为您拟作一首：', compose: data, source: data.source })
-    } else {
-      messages.value.push({ role: 'ai', text: data.note || '暂未能生成。' })
-    }
-  } catch {
-    messages.value.push({ role: 'ai', text: '创诗失败，请稍后再试。' })
-  } finally {
-    sending.value = false
-    await scrollBottom()
-  }
-}
-
-async function copyPoem(c) {
-  try {
-    await navigator.clipboard.writeText(`《${c.title}》\n${c.poem}`)
-  } catch { /* 剪贴板不可用时静默 */ }
-}
+onMounted(async () => {
+  const data = await getConceptList()
+  conceptOptions.value = data.items.map(c => c.name)
+  await auth.init()
+  await loadConvs()
+  if (auth.loggedIn && convs.value.length) selectConv(convs.value[0].id)
+})
 </script>
