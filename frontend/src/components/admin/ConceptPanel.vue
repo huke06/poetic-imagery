@@ -97,7 +97,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import {
-  adminCreateConcept, adminDeleteConcept, adminUpdateConcept, getConceptList, getPalette,
+  adminCreateConcept, adminDeleteConcept, adminUpdateConcept, getConceptDetail, getConceptList, getPalette,
 } from '../../api'
 import Modal from './Modal.vue'
 
@@ -117,10 +117,8 @@ const suggestedName = ref('')
 
 async function load() {
   const data = await getConceptList()
-  // 管理界面需要完整字段，逐个取详情
   list.value = await Promise.all(data.items.map(async (c) => {
-    const d = await import('../../api').then((m) => m.getConceptDetail(c.id))
-    return d
+    try { return await getConceptDetail(c.id) } catch { return c }
   }))
 }
 

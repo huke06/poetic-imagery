@@ -18,15 +18,15 @@ export const auth = reactive({
     } catch { this.logout() }
   },
 
-  async login(username, password) {
-    const { data } = await axios.post('/api/auth/login', { username, password })
+  async login(username, password, captchaId, captchaAnswer) {
+    const { data } = await axios.post('/api/auth/login', { username, password, captcha_id: captchaId || '', captcha_answer: captchaAnswer || '' })
     this.token = data.data.token
     this.user = data.data.user
     localStorage.setItem(TOKEN_KEY, this.token)
   },
 
-  async register(username, password, email) {
-    const { data } = await axios.post('/api/auth/register', { username, password, email: email || '' })
+  async register(username, password, email, captchaId, captchaAnswer) {
+    const { data } = await axios.post('/api/auth/register', { username, password, email: email || '', captcha_id: captchaId || '', captcha_answer: captchaAnswer || '' })
     this.token = data.data.token
     this.user = data.data.user
     localStorage.setItem(TOKEN_KEY, this.token)

@@ -10,16 +10,51 @@ from ..schemas import ApiResp
 
 router = APIRouter(prefix="/api/auth", tags=["账号"])
 
+# 简易数学验证码缓存
+import random, time
+_captcha_store: dict[str, tuple[int, float]] = {}  # id → (answer, expires_at)
+
+
+@router.get("/captcha")
+def get_captcha():
+    """返回数学验证码题目（图片渲染在前端 Canvas）"""
+    cid = __import__('secrets').token_hex(8)
+    a = random.randint(1, 20)
+    b = random.randint(1, 20)
+    op = random.choice(["+", "×"])
+    answer = a + b if op == "+" else a * b
+    _captcha_store[cid] = (answer, time.time() + 300)  # 5 分钟有效
+    return ApiResp(data={"id": cid, "question": f"{a} {op} {b} = ?"})
+
+
+def _check_captcha(captcha_id: str, captcha_answer: str):
+    if not captcha_id or captcha_id not in _captcha_store:
+        raise HTTPException(400, "验证码已过期，请刷新")
+    ans, expires = _captcha_store[captcha_id]
+    if time.time() > expires:
+        _captcha_store.pop(captcha_id, None)
+        raise HTTPException(400, "验证码已过期")
+    try:
+        if int(captcha_answer) != ans:
+            raise HTTPException(400, "验证码错误")
+    except ValueError:
+        raise HTTPException(400, "验证码答案须为数字")
+    _captcha_store.pop(captcha_id, None)
+
 
 class RegisterReq(BaseModel):
     username: str = Field(min_length=2, max_length=32)
     email: str = Field(default="")
     password: str = Field(min_length=6, max_length=64)
+    captcha_id: str = ""
+    captcha_answer: str = ""
 
 
 class LoginReq(BaseModel):
     username: str
     password: str
+    captcha_id: str = ""
+    captcha_answer: str = ""
 
 
 class ResetReq(BaseModel):
@@ -28,6 +63,7 @@ class ResetReq(BaseModel):
 
 @router.post("/register")
 def register(req: RegisterReq, db: Session = Depends(get_db)):
+    _check_captcha(req.captcha_id, req.captcha_answer)
     if db.query(User).filter_by(username=req.username).first():
         raise HTTPException(400, "用户名已被使用")
     user = User(
@@ -44,6 +80,7 @@ def register(req: RegisterReq, db: Session = Depends(get_db)):
 
 @router.post("/login")
 def login(req: LoginReq, db: Session = Depends(get_db)):
+    _check_captcha(req.captcha_id, req.captcha_answer)
     user = db.query(User).filter_by(username=req.username).first()
     if not user or not auth_utils.verify_pw(req.password, user.password_hash):
         raise HTTPException(400, "用户名或密码错误")

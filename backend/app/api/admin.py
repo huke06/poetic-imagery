@@ -569,7 +569,63 @@ def import_template(format: str = Query("json", pattern="^(json|csv_poetries|csv
     )
 
 
-# ═══════════ 朝代统计重算 ═══════════
+# ═══════════ 用户管理 ═══════════
+@router.get("/users", dependencies=[Depends(check_token)])
+def admin_users(db: Session = Depends(get_db)):
+    users = db.query(User).order_by(User.id).all()
+    return ApiResp(data=[{"id": u.id, "username": u.username, "email": u.email, "role": u.role,
+                          "is_active": u.is_active, "create_time": str(u.create_time)} for u in users])
+
+
+class UserUpsert(BaseModel):
+    username: str = ""
+    email: str = ""
+    password: str = ""
+    role: str = "user"
+    is_active: bool = True
+
+
+@router.post("/users", dependencies=[Depends(check_token)])
+def admin_create_user(req: UserUpsert, db: Session = Depends(get_db)):
+    if not req.username or not req.password:
+        raise HTTPException(400, "用户名和密码必填")
+    if db.query(User).filter_by(username=req.username).first():
+        raise HTTPException(400, "用户名已存在")
+    u = User(username=req.username, email=req.email, role=req.role or "user",
+             password_hash=auth_utils.hash_pw(req.password), is_active=int(req.is_active))
+    db.add(u)
+    db.commit()
+    return ApiResp(data={"id": u.id})
+
+
+@router.put("/users/{user_id}", dependencies=[Depends(check_token)])
+def admin_update_user(user_id: int, req: UserUpsert, db: Session = Depends(get_db)):
+    u = db.get(User, user_id)
+    if not u:
+        raise HTTPException(404, "用户不存在")
+    if req.username:
+        u.username = req.username
+    if req.email:
+        u.email = req.email
+    if req.password:
+        u.password_hash = auth_utils.hash_pw(req.password)
+    u.role = req.role or u.role
+    u.is_active = int(req.is_active)
+    db.commit()
+    return ApiResp(data={"id": u.id})
+
+
+@router.delete("/users/{user_id}", dependencies=[Depends(check_token)])
+def admin_delete_user(user_id: int, db: Session = Depends(get_db)):
+    u = db.get(User, user_id)
+    if not u:
+        raise HTTPException(404, "用户不存在")
+    db.delete(u)
+    db.commit()
+    return ApiResp()
+
+
+# ═══════════ 批量预生成 ═══════════
 @router.post("/pregenerate", dependencies=[Depends(check_token)])
 def pregenerate_all(db: Session = Depends(get_db)):
     """批量预生成所有未翻译/未赏析的诗文（Token 消耗大，建议非高峰期用）"""
