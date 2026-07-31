@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="flex items-center justify-between mb-4">
-      <p class="text-sm text-qianhui">共 {{ list.length }} 个意象；主题色未选择时按「分类色相族+名称哈希」自动分配传统色</p>
+      <p class="text-sm" :class="loadErr ? 'text-zhusha' : 'text-qianhui'">{{ loadErr || `共 ${list.length} 个意象；主题色未选择时按「分类色相族+名称哈希」自动分配传统色` }}</p>
       <button class="btn-primary !py-1.5 !text-xs" @click="openEdit(null)">新建意象</button>
     </div>
     <div class="space-y-2">
@@ -114,12 +114,21 @@ const editing = ref(null)
 const form = ref({})
 const palette = ref([])
 const suggestedName = ref('')
+const loadErr = ref('')
 
 async function load() {
-  const data = await getConceptList()
-  list.value = await Promise.all(data.items.map(async (c) => {
-    try { return await getConceptDetail(c.id) } catch { return c }
-  }))
+  loadErr.value = ''
+  try {
+    const data = await getConceptList()
+    if (!data?.items?.length) { list.value = []; return }
+    const details = await Promise.all(data.items.map(async (c) => {
+      try { return await getConceptDetail(c.id) } catch (e) { console.error('detail fail', c.id, e); return c }
+    }))
+    list.value = details
+  } catch (e) {
+    loadErr.value = '加载失败：' + (e.response?.data?.detail || e.message)
+    list.value = []
+  }
 }
 
 function openEdit(c) {
