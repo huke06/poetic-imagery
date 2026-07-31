@@ -18,7 +18,7 @@
           </router-link>
           <router-link v-if="!auth.loggedIn" to="/auth" class="px-3 py-2 text-xs text-qianhui hover:text-shiqing tracking-wider">登录</router-link>
           <div v-else class="flex items-center gap-2 text-xs">
-            <router-link to="/auth" class="text-moyan/80 hover:text-shiqing tracking-wider">{{ auth.user?.username }}</router-link>
+            <router-link to="/auth" class="text-moyan/80 hover:text-shiqing tracking-wider">个人中心</router-link>
             <span class="tag border-shiqing/40 text-shiqing !text-[10px]" v-if="auth.user?.role==='admin'">管理员</span>
           </div>
           <!-- 诗文搜索 -->
