@@ -39,9 +39,31 @@
     <!-- 详情弹窗 -->
     <Teleport to="body">
       <div v-if="detail" class="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm flex items-center justify-center p-4"
-        @click.self="detail = null">
-        <div class="bg-xuanzhi rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl rise-in">
-          <img :src="detail.image_url" :alt="detail.name" class="w-full max-h-[52vh] object-cover bg-black/5" />
+        @click.self="closeDetail" @keydown.esc="closeDetail">
+        <!-- 全屏查看 -->
+        <div v-if="fullscreen" class="fixed inset-0 z-[60] bg-black flex items-center justify-center"
+          @dblclick="exitFullscreen" @keydown.esc="exitFullscreen">
+          <img :src="detail.image_url" :alt="detail.name"
+            class="max-w-full max-h-full object-contain select-none"
+            @dblclick.stop="exitFullscreen" />
+          <button class="fixed top-4 right-4 w-12 h-12 flex items-center justify-center rounded-full bg-white/20 hover:bg-white/35 text-white text-2xl transition-all z-[61]"
+            @click="exitFullscreen" title="退出全屏">×</button>
+          <span class="fixed bottom-4 left-1/2 -translate-x-1/2 text-white/50 text-xs">双击退出全屏</span>
+        </div>
+
+        <!-- 详情卡片 -->
+        <div class="bg-xuanzhi rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl rise-in relative">
+          <!-- 关闭按钮 -->
+          <button class="absolute top-3 right-3 w-10 h-10 flex items-center justify-center rounded-full bg-black/5 hover:bg-black/10 text-qianhui hover:text-zheshi text-xl transition-all z-10"
+            @click="detail = null" title="关闭">×</button>
+
+          <!-- 画作图片（双击全屏） -->
+          <div class="relative cursor-zoom-in" @dblclick="enterFullscreen" title="双击全屏欣赏">
+            <img :src="detail.image_url" :alt="detail.name"
+              class="w-full max-h-[55vh] object-contain bg-black/5" />
+            <span class="absolute bottom-3 right-3 bg-black/40 text-white/70 text-[10px] px-2 py-0.5 rounded">双击全屏</span>
+          </div>
+
           <div class="p-6">
             <div class="flex items-start justify-between">
               <div>
@@ -77,7 +99,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { getArtworkDetail, getArtworkList } from '../api'
 import Pagination from '../components/Pagination.vue'
@@ -94,6 +116,21 @@ const pageSize = 12
 const total = ref(0)
 const loading = ref(true)
 const detail = ref(null)
+const fullscreen = ref(false)
+
+function enterFullscreen() { fullscreen.value = true }
+function exitFullscreen() { fullscreen.value = false }
+function closeDetail() { detail.value = null; fullscreen.value = false }
+
+// Global Esc handler
+function onKey(e) {
+  if (e.key === 'Escape') {
+    if (fullscreen.value) exitFullscreen()
+    else if (detail.value) closeDetail()
+  }
+}
+onMounted(() => document.addEventListener('keydown', onKey))
+onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
 
 async function load() {
   loading.value = true

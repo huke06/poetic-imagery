@@ -125,6 +125,69 @@
       </div>
     </section>
 
+    <!-- ═══ 4.5 用法谱系（绎象） ═══ -->
+    <section>
+      <SectionTitle :color="detail.theme_color" sub="同一意象在不同诗人笔下的用法差异">用法谱系</SectionTitle>
+      <div v-if="spectrumLoading" class="py-8 text-center text-qianhui text-sm">加载中…</div>
+      <div v-else-if="spectrum.length" class="card overflow-hidden mt-6">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-shiqing/10 text-left text-xs text-qianhui tracking-widest">
+                <th class="p-3 pl-5 font-normal">情感功能</th>
+                <th class="p-3 font-normal">代表诗人</th>
+                <th class="p-3 font-normal">代表诗句</th>
+                <th class="p-3 pr-5 font-normal">意象在诗中的角色</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(s, i) in spectrum"
+                :key="s.poet"
+                class="border-b border-black/5 hover:bg-shiqing/[0.03] transition-colors"
+                :style="{ animationDelay: i * 0.04 + 's' }"
+              >
+                <td class="p-3 pl-5">
+                  <div class="flex flex-wrap gap-1">
+                    <span
+                      v-for="e in s.emotion_function.split('、')"
+                      :key="e"
+                      class="tag !text-[10px]"
+                      :style="{ color: detail.theme_color, borderColor: detail.theme_color + '44', background: detail.theme_color + '08' }"
+                    >{{ e }}</span>
+                  </div>
+                </td>
+                <td class="p-3">
+                  <span class="font-semibold">{{ s.poet }}</span>
+                  <span class="text-qianhui text-xs ml-1">{{ s.dynasty }}</span>
+                </td>
+                <td class="p-3 verse-text text-moyan/85 max-w-xs truncate" :title="s.representative_verse">
+                  「{{ s.representative_verse }}」
+                  <div class="text-[10px] text-qianhui mt-0.5">《{{ s.poetry_title }}》</div>
+                </td>
+                <td class="p-3 pr-5 text-xs text-qianhui">{{ s.role_in_poem }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="flex items-center justify-between px-5 py-3 bg-shiqing/[0.02] border-t border-shiqing/5">
+          <span class="text-xs text-qianhui">共 <b class="text-moyan">{{ spectrum.length }}</b> 位诗人 · {{ spectrumTotalVerses }} 条诗句</span>
+          <button
+            class="text-xs text-zheshi hover:underline"
+            @click="summarizeUsage"
+            :disabled="summarizeLoading"
+          >
+            {{ summarizeLoading ? '生成中…' : '总结意象用法 →' }}
+          </button>
+        </div>
+        <!-- Usage summary -->
+        <div v-if="usageSummary" class="px-5 py-4 border-t border-shiqing/5 bg-zheshi/[0.02]">
+          <p class="text-sm text-moyan/80 leading-7">{{ usageSummary }}</p>
+        </div>
+      </div>
+      <p v-else class="text-sm text-qianhui/70 py-8 text-center">暂无用法谱系数据</p>
+    </section>
+
     <!-- ═══ 5. 诗画相映 ═══ -->
     <section v-if="artworks.length">
       <SectionTitle :color="detail.theme_color" sub="点击画作查看详情">诗画相映</SectionTitle>
@@ -152,18 +215,37 @@
       <router-link :to="`/artworks`" class="btn-outline !py-1.5 !px-4 !text-xs">前往古画展厅</router-link>
     </section>
 
-    <!-- 古画弹窗 -->
+    <!-- 古画弹窗（观象：先展示全景图，再展示详情） -->
     <Teleport to="body">
-      <div v-if="activeArtwork" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+      <div v-if="activeArtwork" class="fixed inset-0 z-50 bg-moyan/80 backdrop-blur-sm flex items-center justify-center p-4"
         @click.self="activeArtwork = null">
-        <div class="bg-xuanzhi rounded-lg max-w-2xl w-full overflow-hidden shadow-2xl rise-in">
-          <img :src="activeArtwork.artwork.image_url" :alt="activeArtwork.artwork.name" class="w-full max-h-[50vh] object-cover bg-black/5" />
+        <div class="bg-xuanzhi rounded-lg max-w-4xl w-full max-h-[92vh] overflow-y-auto shadow-2xl rise-in">
+          <!-- Full painting panorama -->
+          <div class="relative bg-black/5 flex items-center justify-center" style="min-height: 40vh;">
+            <img
+              :src="activeArtwork.artwork.image_url"
+              :alt="activeArtwork.artwork.name"
+              class="w-full h-auto max-h-[60vh] object-contain"
+              @error="$event.target.style.display = 'none'"
+            />
+          </div>
+          <!-- Details -->
           <div class="p-6">
-            <h3 class="font-song text-xl font-bold">《{{ activeArtwork.artwork.name }}》</h3>
-            <p class="text-sm text-qianhui mt-1">{{ activeArtwork.artwork.dynasty }} · {{ activeArtwork.artwork.artist }}</p>
-            <p class="text-sm leading-7 mt-3 text-moyan/85">{{ activeArtwork.relation_desc }}</p>
-            <div class="mt-5 text-right">
-              <button class="btn-primary !py-1.5 !text-xs" @click="$router.push(`/artworks?id=${activeArtwork.artwork.id}`)">查看作品详情</button>
+            <div class="flex items-start justify-between flex-wrap gap-3">
+              <div>
+                <h3 class="font-song text-2xl font-bold">《{{ activeArtwork.artwork.name }}》</h3>
+                <p class="text-sm text-qianhui mt-1">{{ activeArtwork.artwork.dynasty }} · {{ activeArtwork.artwork.artist }}</p>
+              </div>
+              <button
+                class="btn-outline !py-1.5 !px-3 !text-xs"
+                @click="activeArtwork = null"
+              >关闭</button>
+            </div>
+            <p class="text-sm leading-7 mt-4 text-moyan/85">{{ activeArtwork.relation_desc }}</p>
+            <div class="mt-4 flex gap-3">
+              <button class="btn-primary !py-1.5 !text-xs" @click="goToArtwork(activeArtwork.artwork.id)">
+                查看作品详情
+              </button>
             </div>
           </div>
         </div>
@@ -178,8 +260,10 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  getConceptArtworks, getConceptDetail, getConceptPoetries, getConceptRelations, shareCardUrl,
+  getConceptArtworks, getConceptDetail, getConceptPoetries, getConceptRelations,
+  getConceptUsageSpectrum, shareCardUrl,
 } from '../api'
+import { useExploredImageries } from '../composables/useExploredImageries'
 import Pagination from '../components/Pagination.vue'
 import ParticleCanvas from '../components/ParticleCanvas.vue'
 import SectionTitle from '../components/SectionTitle.vue'
@@ -194,6 +278,14 @@ const artworks = ref([])
 const relationEdges = ref([])
 const relationNodes = ref([])
 const activeArtwork = ref(null)
+
+// 绎象：用法谱系
+const spectrum = ref([])
+const spectrumLoading = ref(true)
+const usageSummary = ref('')
+const summarizeLoading = ref(false)
+
+const { addExplored } = useExploredImageries()
 
 const page = ref(1)
 const pageSize = 6
@@ -308,15 +400,49 @@ function onNodeClick(params) {
   }
 }
 
+const spectrumTotalVerses = computed(() => spectrum.value.reduce((s, item) => s + item.verse_count, 0))
+
+async function loadSpectrum() {
+  try {
+    spectrum.value = (await getConceptUsageSpectrum(conceptId)).spectrum
+  } catch {
+    spectrum.value = []
+  } finally {
+    spectrumLoading.value = false
+  }
+}
+
+function goToArtwork(artworkId) {
+  activeArtwork.value = null
+  router.push(`/artworks?id=${artworkId}`)
+}
+
+async function summarizeUsage() {
+  summarizeLoading.value = true
+  try {
+    const { agentAsk } = await import('../api')
+    const poets = spectrum.value.slice(0, 5).map((s) => s.poet).join('、')
+    const prompt = `请总结意象「${detail.value.name}」的用法特点。已有以下诗人使用过：${poets}。请用约100字概括该意象在不同诗人笔下的主要情感功能和风格差异，语言典雅简洁。`
+    const resp = await agentAsk(prompt)
+    usageSummary.value = resp.answer
+  } catch {
+    usageSummary.value = `「${detail.value.name}」意象在 ${spectrum.value.length} 位诗人的笔下各具风姿，或寄情山水，或托物言志，承载着丰富的文化内涵与情感意蕴。`
+  } finally {
+    summarizeLoading.value = false
+  }
+}
+
 onMounted(async () => {
   try {
     if (!Number.isFinite(conceptId)) throw new Error('invalid id')
     detail.value = await getConceptDetail(conceptId)
+    // 立即记录探索历史（不等后续 API，防止异常导致丢失）
+    addExplored(detail.value)
     const [arts, rels] = await Promise.all([getConceptArtworks(conceptId), getConceptRelations(conceptId)])
     artworks.value = arts
     relationNodes.value = rels.nodes
     relationEdges.value = rels.edges
-    await loadPoetries()
+    await Promise.all([loadPoetries(), loadSpectrum()])
   } catch {
     router.replace({ name: 'not-found' })
   }

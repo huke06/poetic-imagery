@@ -32,6 +32,14 @@
             <div class="mt-10 flex items-center gap-5">
               <router-link to="/concepts" class="btn-primary !bg-xuanzhi !text-shiqing hover:!bg-white shadow-lg">意象漫游</router-link>
               <router-link to="/artworks" class="btn-outline !border-xuanzhi/70 !text-xuanzhi hover:!bg-xuanzhi hover:!text-shiqing">古画寻诗</router-link>
+              <button @click="randomConcept" class="btn-outline !border-xuanzhi/50 !text-xuanzhi/80 hover:!bg-xuanzhi/10 hover:!text-xuanzhi group flex items-center gap-2" title="随机探索一个意象">
+                <svg class="w-4 h-4 transition-transform group-hover:rotate-12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <circle cx="12" cy="12" r="10" stroke-dasharray="4 2"/>
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke-width="1" opacity="0.5"/>
+                </svg>
+                随缘一象
+              </button>
             </div>
           </div>
           <!-- 竖排题句 -->
@@ -89,6 +97,7 @@ import ParticleCanvas from '../components/ParticleCanvas.vue'
 import SectionTitle from '../components/SectionTitle.vue'
 
 const concepts = ref([])
+const allConcepts = ref([])
 const loading = ref(true)
 
 const features = [
@@ -99,10 +108,19 @@ const features = [
 
 onMounted(async () => {
   try {
-    const data = await getConceptList()
-    concepts.value = data.items
+    const data = await getConceptList({ page_size: 200 })
+    allConcepts.value = data.items
+    // 精选：取 poetry_count 最高的前 6 个
+    concepts.value = [...data.items].sort((a, b) => b.poetry_count - a.poetry_count).slice(0, 6)
   } finally {
     loading.value = false
   }
 })
+
+function randomConcept() {
+  if (!allConcepts.value.length) return
+  const pool = allConcepts.value
+  const pick = pool[Math.floor(Math.random() * pool.length)]
+  window.location.href = `/concept/${pick.id}`
+}
 </script>

@@ -4,6 +4,7 @@ const routes = [
   { path: '/', name: 'home', component: () => import('../views/HomeView.vue'), meta: { title: '首页' } },
   { path: '/concepts', name: 'concepts', component: () => import('../views/ConceptGalleryView.vue'), meta: { title: '意象画廊' } },
   { path: '/concept/:id', name: 'concept-detail', component: () => import('../views/ConceptDetailView.vue'), meta: { title: '意象详情' } },
+  { path: '/atlas', name: 'atlas', component: () => import('../views/PoeticAtlasView.vue'), meta: { title: '诗意图鉴' } },
   { path: '/artworks', name: 'artworks', component: () => import('../views/ArtworkGalleryView.vue'), meta: { title: '古画展厅' } },
   { path: '/agent', name: 'agent', component: () => import('../views/AgentView.vue'), meta: { title: '智能助手' } },
   { path: '/poetry/:id', name: 'poetry-detail', component: () => import('../views/PoetryDetailView.vue'), meta: { title: '诗文详情' } },

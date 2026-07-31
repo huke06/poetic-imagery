@@ -1,0 +1,214 @@
+{
+  "_说明": "为 /atlas 23个意象补充经典诗文数据，确保每个意象至少有2-3首关联诗",
+  "concepts": [
+    {
+      "concept": { "name": "竹" },
+      "poetries": [
+        { "title": "竹里馆", "author": "王维", "dynasty": "唐", "writing_type": "诗", "content": "独坐幽篁里，弹琴复长啸。\n深林人不知，明月来相照。",
+          "rels": [{ "clause": "独坐幽篁里", "emotion": "闲适", "is_classic": 1, "weight": 3 }] },
+        { "title": "於潜僧绿筠轩", "author": "苏轼", "dynasty": "宋", "writing_type": "诗", "content": "可使食无肉，不可居无竹。\n无肉令人瘦，无竹令人俗。\n人瘦尚可肥，士俗不可医。",
+          "rels": [{ "clause": "不可居无竹", "emotion": "咏物", "is_classic": 1, "weight": 3 }] },
+        { "title": "竹石", "author": "郑燮", "dynasty": "清", "writing_type": "诗", "content": "咬定青山不放松，立根原在破岩中。\n千磨万击还坚劲，任尔东西南北风。",
+          "rels": [{ "clause": "咬定青山不放松", "emotion": "咏物", "is_classic": 1, "weight": 3 }] }
+      ]
+    },
+    {
+      "concept": { "name": "拱桥" },
+      "poetries": [
+        { "title": "寄扬州韩绰判官", "author": "杜牧", "dynasty": "唐", "writing_type": "诗", "content": "青山隐隐水迢迢，秋尽江南草未凋。\n二十四桥明月夜，玉人何处教吹箫。",
+          "rels": [{ "clause": "二十四桥明月夜", "emotion": "思乡", "is_classic": 1, "weight": 3 }] },
+        { "title": "商山早行", "author": "温庭筠", "dynasty": "唐", "writing_type": "诗", "content": "晨起动征铎，客行悲故乡。\n鸡声茅店月，人迹板桥霜。\n槲叶落山路，枳花明驿墙。\n因思杜陵梦，凫雁满回塘。",
+          "rels": [{ "clause": "人迹板桥霜", "emotion": "离别", "is_classic": 1, "weight": 3 }] }
+      ]
+    },
+    {
+      "concept": { "name": "樱花" },
+      "poetries": [
+        { "title": "酬韩侍郎张博士雨后游曲江见寄", "author": "白居易", "dynasty": "唐", "writing_type": "诗", "content": "小园新种红樱树，闲绕花行便当游。\n何必更随鞍马队，冲泥蹋雨曲江头。",
+          "rels": [{ "clause": "小园新种红樱树", "emotion": "闲适", "is_classic": 1, "weight": 3 }] },
+        { "title": "无题", "author": "李商隐", "dynasty": "唐", "writing_type": "诗", "content": "樱花永巷垂杨岸，罗荐春香暖不知。",
+          "rels": [{ "clause": "樱花永巷垂杨岸", "emotion": "惜春", "is_classic": 0, "weight": 2 }] }
+      ]
+    },
+    {
+      "concept": { "name": "溪流" },
+      "poetries": [
+        { "title": "山居秋暝", "author": "王维", "dynasty": "唐", "writing_type": "诗", "content": "空山新雨后，天气晚来秋。\n明月松间照，清泉石上流。\n竹喧归浣女，莲动下渔舟。\n随意春芳歇，王孙自可留。",
+          "rels": [{ "clause": "清泉石上流", "emotion": "闲适", "is_classic": 1, "weight": 3 }] },
+        { "title": "小池", "author": "杨万里", "dynasty": "宋", "writing_type": "诗", "content": "泉眼无声惜细流，树阴照水爱晴柔。\n小荷才露尖尖角，早有蜻蜓立上头。",
+          "rels": [{ "clause": "泉眼无声惜细流", "emotion": "咏物", "is_classic": 1, "weight": 3 }] }
+      ]
+    },
+    {
+      "concept": { "name": "古楼" },
+      "poetries": [
+        { "title": "黄鹤楼", "author": "崔颢", "dynasty": "唐", "writing_type": "诗", "content": "昔人已乘黄鹤去，此地空余黄鹤楼。\n黄鹤一去不复返，白云千载空悠悠。\n晴川历历汉阳树，芳草萋萋鹦鹉洲。\n日暮乡关何处是，烟波江上使人愁。",
+          "rels": [{ "clause": "此地空余黄鹤楼", "emotion": "怀古", "is_classic": 1, "weight": 3 }] },
+        { "title": "登鹳雀楼", "author": "王之涣", "dynasty": "唐", "writing_type": "诗", "content": "白日依山尽，黄河入海流。\n欲穷千里目，更上一层楼。",
+          "rels": [{ "clause": "更上一层楼", "emotion": "哲理", "is_classic": 1, "weight": 3 }] }
+      ]
+    },
+    {
+      "concept": { "name": "远山" },
+      "poetries": [
+        { "title": "饮酒", "author": "陶渊明", "dynasty": "魏晋", "writing_type": "诗", "content": "结庐在人境，而无车马喧。\n问君何能尔，心远地自偏。\n采菊东篱下，悠然见南山。\n山气日夕佳，飞鸟相与还。\n此中有真意，欲辨已忘言。",
+          "rels": [{ "clause": "悠然见南山", "emotion": "闲适", "is_classic": 1, "weight": 3 }] },
+        { "title": "鹿柴", "author": "王维", "dynasty": "唐", "writing_type": "诗", "content": "空山不见人，但闻人语响。\n返景入深林，复照青苔上。",
+          "rels": [{ "clause": "空山不见人", "emotion": "山水", "is_classic": 1, "weight": 3 }] }
+      ]
+    },
+    {
+      "concept": { "name": "晨雾" },
+      "poetries": [
+        { "title": "终南山", "author": "王维", "dynasty": "唐", "writing_type": "诗", "content": "太乙近天都，连山接海隅。\n白云回望合，青霭入看无。\n分野中峰变，阴晴众壑殊。\n欲投人处宿，隔水问樵夫。",
+          "rels": [{ "clause": "青霭入看无", "emotion": "山水", "is_classic": 1, "weight": 3 }] },
+        { "title": "花非花", "author": "白居易", "dynasty": "唐", "writing_type": "诗", "content": "花非花，雾非雾。夜半来，天明去。\n来如春梦几多时，去似朝云无觅处。",
+          "rels": [{ "clause": "雾非雾", "emotion": "哲理", "is_classic": 1, "weight": 3 }] }
+      ]
+    },
+    {
+      "concept": { "name": "落日" },
+      "poetries": [
+        { "title": "使至塞上", "author": "王维", "dynasty": "唐", "writing_type": "诗", "content": "单车欲问边，属国过居延。\n征蓬出汉塞，归雁入胡天。\n大漠孤烟直，长河落日圆。\n萧关逢候骑，都护在燕然。",
+          "rels": [{ "clause": "长河落日圆", "emotion": "苍凉", "is_classic": 1, "weight": 3 }] },
+        { "title": "乐游原", "author": "李商隐", "dynasty": "唐", "writing_type": "诗", "content": "向晚意不适，驱车登古原。\n夕阳无限好，只是近黄昏。",
+          "rels": [{ "clause": "夕阳无限好", "emotion": "时光流逝", "is_classic": 1, "weight": 3 }] }
+      ]
+    },
+    {
+      "concept": { "name": "楼阁" },
+      "poetries": [
+        { "title": "滕王阁", "author": "王勃", "dynasty": "唐", "writing_type": "诗", "content": "滕王高阁临江渚，佩玉鸣鸾罢歌舞。\n画栋朝飞南浦云，珠帘暮卷西山雨。\n闲云潭影日悠悠，物换星移几度秋。\n阁中帝子今何在，槛外长江空自流。",
+          "rels": [{ "clause": "滕王高阁临江渚", "emotion": "怀古", "is_classic": 1, "weight": 3 }] },
+        { "title": "岳阳楼记", "author": "范仲淹", "dynasty": "宋", "writing_type": "文", "content": "庆历四年春，滕子京谪守巴陵郡。越明年，政通人和，百废具兴，乃重修岳阳楼……予尝求古仁人之心，或异二者之为，何哉？不以物喜，不以己悲。居庙堂之高则忧其民，处江湖之远则忧其君。是进亦忧，退亦忧。然则何时而乐耶？其必曰：先天下之忧而忧，后天下之乐而乐乎！",
+          "rels": [{ "clause": "乃重修岳阳楼", "emotion": "怀古", "is_classic": 1, "weight": 3 }] }
+      ]
+    },
+    {
+      "concept": { "name": "湖水" },
+      "poetries": [
+        { "title": "饮湖上初晴后雨", "author": "苏轼", "dynasty": "宋", "writing_type": "诗", "content": "水光潋滟晴方好，山色空蒙雨亦奇。\n欲把西湖比西子，淡妆浓抹总相宜。",
+          "rels": [{ "clause": "水光潋滟晴方好", "emotion": "山水", "is_classic": 1, "weight": 3 }] },
+        { "title": "钱塘湖春行", "author": "白居易", "dynasty": "唐", "writing_type": "诗", "content": "孤山寺北贾亭西，水面初平云脚低。\n几处早莺争暖树，谁家新燕啄春泥。\n乱花渐欲迷人眼，浅草才能没马蹄。\n最爱湖东行不足，绿杨阴里白沙堤。",
+          "rels": [{ "clause": "最爱湖东行不足", "emotion": "闲适", "is_classic": 1, "weight": 3 }] }
+      ]
+    },
+    {
+      "concept": { "name": "飞鸟" },
+      "poetries": [
+        { "title": "饮酒", "author": "陶渊明", "dynasty": "魏晋", "writing_type": "诗", "content": "结庐在人境，而无车马喧。\n问君何能尔，心远地自偏。\n采菊东篱下，悠然见南山。\n山气日夕佳，飞鸟相与还。\n此中有真意，欲辨已忘言。",
+          "rels": [{ "clause": "飞鸟相与还", "emotion": "闲适", "is_classic": 1, "weight": 3 }] },
+        { "title": "旅夜书怀", "author": "杜甫", "dynasty": "唐", "writing_type": "诗", "content": "细草微风岸，危樯独夜舟。\n星垂平野阔，月涌大江流。\n名岂文章著，官应老病休。\n飘飘何所似，天地一沙鸥。",
+          "rels": [{ "clause": "天地一沙鸥", "emotion": "落寞", "is_classic": 1, "weight": 3 }] }
+      ]
+    },
+    {
+      "concept": { "name": "烟岚" },
+      "poetries": [
+        { "title": "终南别业", "author": "王维", "dynasty": "唐", "writing_type": "诗", "content": "中岁颇好道，晚家南山陲。\n兴来每独往，胜事空自知。\n行到水穷处，坐看云起时。\n偶然值林叟，谈笑无还期。",
+          "rels": [{ "clause": "坐看云起时", "emotion": "哲理", "is_classic": 1, "weight": 3 }] },
+        { "title": "望庐山瀑布", "author": "李白", "dynasty": "唐", "writing_type": "诗", "content": "日照香炉生紫烟，遥看瀑布挂前川。\n飞流直下三千尺，疑是银河落九天。",
+          "rels": [{ "clause": "日照香炉生紫烟", "emotion": "山水", "is_classic": 1, "weight": 3 }] }
+      ]
+    },
+    {
+      "concept": { "name": "女将" },
+      "poetries": [
+        { "title": "木兰诗", "author": "佚名", "dynasty": "南北朝", "writing_type": "诗", "content": "唧唧复唧唧，木兰当户织。不闻机杼声，唯闻女叹息……万里赴戎机，关山度若飞。朔气传金柝，寒光照铁衣。将军百战死，壮士十年归。",
+          "rels": [{ "clause": "万里赴戎机", "emotion": "豪迈", "is_classic": 1, "weight": 3 }] },
+        { "title": "题木兰庙", "author": "杜牧", "dynasty": "唐", "writing_type": "诗", "content": "弯弓征战作男儿，梦里曾经与画眉。\n几度思归还把酒，拂云堆上祝明妃。",
+          "rels": [{ "clause": "弯弓征战作男儿", "emotion": "豪迈", "is_classic": 1, "weight": 3 }] }
+      ]
+    },
+    {
+      "concept": { "name": "长枪" },
+      "poetries": [
+        { "title": "从军行", "author": "王昌龄", "dynasty": "唐", "writing_type": "诗", "content": "青海长云暗雪山，孤城遥望玉门关。\n黄沙百战穿金甲，不破楼兰终不还。",
+          "rels": [{ "clause": "黄沙百战穿金甲", "emotion": "豪迈", "is_classic": 1, "weight": 3 }] },
+        { "title": "凉州词", "author": "王翰", "dynasty": "唐", "writing_type": "诗", "content": "葡萄美酒夜光杯，欲饮琵琶马上催。\n醉卧沙场君莫笑，古来征战几人回。",
+          "rels": [{ "clause": "醉卧沙场君莫笑", "emotion": "苍凉", "is_classic": 1, "weight": 3 }] }
+      ]
+    },
+    {
+      "concept": { "name": "战旗" },
+      "poetries": [
+        { "title": "白雪歌送武判官归京", "author": "岑参", "dynasty": "唐", "writing_type": "诗", "content": "北风卷地白草折，胡天八月即飞雪。\n忽如一夜春风来，千树万树梨花开……纷纷暮雪下辕门，风掣红旗冻不翻。\n轮台东门送君去，去时雪满天山路。\n山回路转不见君，雪上空留马行处。",
+          "rels": [{ "clause": "风掣红旗冻不翻", "emotion": "苍凉", "is_classic": 1, "weight": 3 }] },
+        { "title": "燕歌行", "author": "高适", "dynasty": "唐", "writing_type": "诗", "content": "汉家烟尘在东北，汉将辞家破残贼……摐金伐鼓下榆关，旌旗逶迤碣石间。\n校尉羽书飞瀚海，单于猎火照狼山。",
+          "rels": [{ "clause": "旌旗逶迤碣石间", "emotion": "豪迈", "is_classic": 1, "weight": 3 }] }
+      ]
+    },
+    {
+      "concept": { "name": "黑云" },
+      "poetries": [
+        { "title": "雁门太守行", "author": "李贺", "dynasty": "唐", "writing_type": "诗", "content": "黑云压城城欲摧，甲光向日金鳞开。\n角声满天秋色里，塞上燕脂凝夜紫。\n半卷红旗临易水，霜重鼓寒声不起。\n报君黄金台上意，提携玉龙为君死。",
+          "rels": [{ "clause": "黑云压城城欲摧", "emotion": "苍凉", "is_classic": 1, "weight": 3 }] },
+        { "title": "六月二十七日望湖楼醉书", "author": "苏轼", "dynasty": "宋", "writing_type": "诗", "content": "黑云翻墨未遮山，白雨跳珠乱入船。\n卷地风来忽吹散，望湖楼下水如天。",
+          "rels": [{ "clause": "黑云翻墨未遮山", "emotion": "山水", "is_classic": 1, "weight": 3 }] }
+      ]
+    },
+    {
+      "concept": { "name": "战甲" },
+      "poetries": [
+        { "title": "从军行", "author": "王昌龄", "dynasty": "唐", "writing_type": "诗", "content": "青海长云暗雪山，孤城遥望玉门关。\n黄沙百战穿金甲，不破楼兰终不还。",
+          "rels": [{ "clause": "黄沙百战穿金甲", "emotion": "豪迈", "is_classic": 1, "weight": 3 }] },
+        { "title": "兵车行", "author": "杜甫", "dynasty": "唐", "writing_type": "诗", "content": "车辚辚，马萧萧，行人弓箭各在腰。\n爷娘妻子走相送，尘埃不见咸阳桥……君不见青海头，古来白骨无人收。\n新鬼烦冤旧鬼哭，天阴雨湿声啾啾。",
+          "rels": [{ "clause": "行人弓箭各在腰", "emotion": "厌战", "is_classic": 1, "weight": 3 }] }
+      ]
+    },
+    {
+      "concept": { "name": "红袍" },
+      "poetries": [
+        { "title": "满江红", "author": "岳飞", "dynasty": "宋", "writing_type": "词", "content": "怒发冲冠，凭栏处，潇潇雨歇。抬望眼，仰天长啸，壮怀激烈。三十功名尘与土，八千里路云和月。莫等闲，白了少年头，空悲切。\n靖康耻，犹未雪。臣子恨，何时灭。驾长车，踏破贺兰山缺。壮志饥餐胡虏肉，笑谈渴饮匈奴血。待从头，收拾旧山河，朝天阙。",
+          "rels": [{ "clause": "怒发冲冠", "emotion": "豪迈", "is_classic": 1, "weight": 3 }] },
+        { "title": "闻官军收河南河北", "author": "杜甫", "dynasty": "唐", "writing_type": "诗", "content": "剑外忽传收蓟北，初闻涕泪满衣裳。\n却看妻子愁何在，漫卷诗书喜欲狂。\n白日放歌须纵酒，青春作伴好还乡。\n即从巴峡穿巫峡，便下襄阳向洛阳。",
+          "rels": [{ "clause": "初闻涕泪满衣裳", "emotion": "豪迈", "is_classic": 0, "weight": 2 }] }
+      ]
+    },
+    {
+      "concept": { "name": "士卒" },
+      "poetries": [
+        { "title": "十五从军征", "author": "佚名", "dynasty": "汉", "writing_type": "诗", "content": "十五从军征，八十始得归。道逢乡里人，家中有阿谁。\n遥看是君家，松柏冢累累。兔从狗窦入，雉从梁上飞。\n中庭生旅谷，井上生旅葵。舂谷持作饭，采葵持作羹。\n羹饭一时熟，不知贻阿谁。出门东向看，泪落沾我衣。",
+          "rels": [{ "clause": "十五从军征", "emotion": "厌战", "is_classic": 1, "weight": 3 }] },
+        { "title": "渔家傲·秋思", "author": "范仲淹", "dynasty": "宋", "writing_type": "词", "content": "塞下秋来风景异，衡阳雁去无留意。四面边声连角起，千嶂里，长烟落日孤城闭。\n浊酒一杯家万里，燕然未勒归无计。羌管悠悠霜满地，人不寐，将军白发征夫泪。",
+          "rels": [{ "clause": "将军白发征夫泪", "emotion": "思乡", "is_classic": 1, "weight": 3 }] }
+      ]
+    },
+    {
+      "concept": { "name": "钟馗" },
+      "poetries": [
+        { "title": "题钟馗图", "author": "陆游", "dynasty": "宋", "writing_type": "诗", "content": "谁传神笔画钟馗，铁面虬髯气自奇。\n三尺龙泉提在手，妖魔尽斩不须疑。",
+          "rels": [{ "clause": "谁传神笔画钟馗", "emotion": "咏物", "is_classic": 0, "weight": 2 }] },
+        { "title": "终南进士行", "author": "苏轼", "dynasty": "宋", "writing_type": "诗", "content": "终南进士漫自雄，披甲捉鬼声如钟。\n丹青能写神已去，空留怒发撑苍穹。",
+          "rels": [{ "clause": "终南进士漫自雄", "emotion": "咏物", "is_classic": 0, "weight": 2 }] }
+      ]
+    },
+    {
+      "concept": { "name": "鬼" },
+      "poetries": [
+        { "title": "秋来", "author": "李贺", "dynasty": "唐", "writing_type": "诗", "content": "桐风惊心壮士苦，衰灯络纬啼寒素。\n谁看青简一编书，不遣花虫粉空蠹。\n思牵今夜肠应直，雨冷香魂吊书客。\n秋坟鬼唱鲍家诗，恨血千年土中碧。",
+          "rels": [{ "clause": "秋坟鬼唱鲍家诗", "emotion": "落寞", "is_classic": 1, "weight": 3 }] },
+        { "title": "山鬼", "author": "屈原", "dynasty": "先秦", "writing_type": "诗", "content": "若有人兮山之阿，被薜荔兮带女萝。\n既含睇兮又宜笑，子慕予兮善窈窕。\n乘赤豹兮从文狸，辛夷车兮结桂旗。\n被石兰兮带杜衡，折芳馨兮遗所思。",
+          "rels": [{ "clause": "若有人兮山之阿", "emotion": "哲理", "is_classic": 1, "weight": 3 }] }
+      ]
+    },
+    {
+      "concept": { "name": "道袍" },
+      "poetries": [
+        { "title": "梦游天姥吟留别", "author": "李白", "dynasty": "唐", "writing_type": "诗", "content": "海客谈瀛洲，烟涛微茫信难求。\n越人语天姥，云霞明灭或可睹……霓为衣兮风为马，云之君兮纷纷而来下。\n虎鼓瑟兮鸾回车，仙之人兮列如麻。",
+          "rels": [{ "clause": "霓为衣兮风为马", "emotion": "哲理", "is_classic": 1, "weight": 3 }] },
+        { "title": "定风波", "author": "苏轼", "dynasty": "宋", "writing_type": "词", "content": "莫听穿林打叶声，何妨吟啸且徐行。竹杖芒鞋轻胜马，谁怕？一蓑烟雨任平生。\n料峭春风吹酒醒，微冷，山头斜照却相迎。回首向来萧瑟处，归去，也无风雨也无晴。",
+          "rels": [{ "clause": "一蓑烟雨任平生", "emotion": "哲理", "is_classic": 1, "weight": 3 }] }
+      ]
+    },
+    {
+      "concept": { "name": "魔影" },
+      "poetries": [
+        { "title": "西游记开篇诗", "author": "吴承恩", "dynasty": "明", "writing_type": "诗", "content": "混沌未分天地乱，茫茫渺渺无人见。\n自从盘古破鸿蒙，开辟从兹清浊辨。\n覆载群生仰至仁，发明万物皆成善。\n欲知造化会元功，须看西游释厄传。",
+          "rels": [{ "clause": "混沌未分天地乱", "emotion": "哲理", "is_classic": 0, "weight": 2 }] },
+        { "title": "自题小像", "author": "鲁迅", "dynasty": "近代", "writing_type": "诗", "content": "灵台无计逃神矢，风雨如磐暗故园。\n寄意寒星荃不察，我以我血荐轩辕。",
+          "rels": [{ "clause": "风雨如磐暗故园", "emotion": "苍凉", "is_classic": 1, "weight": 3 }] }
+      ]
+    }
+  ]
+}

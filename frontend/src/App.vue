@@ -54,6 +54,11 @@
       </router-view>
     </main>
 
+    <!-- 金叶集：探索记录悬浮面板 -->
+    <GoldenLeafPanel />
+    <!-- AI 助手悬浮窗 -->
+    <AiFloatingWidget />
+
     <!-- 页脚 -->
     <footer class="mt-20 border-t border-shiqing/10 bg-white/30">
       <div class="max-w-6xl mx-auto px-4 py-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-qianhui">
@@ -75,6 +80,8 @@ import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { searchPoetry } from './api'
 import { auth } from './stores/auth'
+import AiFloatingWidget from './components/AiFloatingWidget.vue'
+import GoldenLeafPanel from './components/GoldenLeafPanel.vue'
 
 onMounted(() => auth.init())
 
@@ -82,6 +89,7 @@ const route = useRoute()
 const navItems = [
   { to: '/', label: '首页' },
   { to: '/concepts', label: '意象画廊' },
+  { to: '/atlas', label: '诗意图鉴' },
   { to: '/artworks', label: '古画展厅' },
   { to: '/agent', label: '智能助手' },
 ]

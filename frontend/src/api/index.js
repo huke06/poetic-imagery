@@ -21,6 +21,11 @@ export const getConceptPoetries = (id, params = {}) => http.get(`/api/concept/${
 export const getConceptArtworks = (id) => http.get(`/api/concept/${id}/artworks`)
 export const getConceptRelations = (id) => http.get(`/api/concept/${id}/relations`)
 export const shareCardUrl = (id) => `/api/concept/${id}/share-card`
+export const explorationCardUrl = '/api/concept/exploration-card'
+export const resolveConcept = (q) => http.get('/api/concept/resolve', { params: { q } })
+export const getConceptUsageSpectrum = (id) => http.get(`/api/concept/${id}/usage-spectrum`)
+export const getConceptPanorama = () => http.get('/api/concept/panorama')
+export const recommendSimilar = (q) => http.get('/api/concept/recommend-similar', { params: { q } })
 
 // ─────────── 诗文 ───────────
 export const getPoetryDetail = (id) => http.get(`/api/poetry/${id}`)
