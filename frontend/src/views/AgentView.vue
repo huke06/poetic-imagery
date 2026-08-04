@@ -1,6 +1,6 @@
 <template>
   <div class="max-w-6xl mx-auto px-4 py-10">
-    <SectionTitle sub="轻量 RAG · 对话记录持久化">智能助手</SectionTitle>
+    <SectionTitle sub="轻量 RAG · 对话记录持久化">灵犀助手</SectionTitle>
     <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mt-6">
       <!-- 对话列表 -->
       <div class="card p-4 h-[640px] flex flex-col">

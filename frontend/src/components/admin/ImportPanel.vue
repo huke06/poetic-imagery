@@ -13,17 +13,20 @@
           class="btn-outline !py-1.5 !px-4 !text-xs">{{ t.label }}</a>
       </div>
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-4 text-xs text-qianhui leading-6">
-        <div class="bg-white/50 rounded p-3">
+        <div class="bg-white/50 rounded p-3 min-w-0 break-words [overflow-wrap:anywhere]">
           <b class="text-moyan">JSON 富格式</b>（全量内容）<br />单意象或 {`{"concepts":[...]}`} 批量；
           含本体+诗文+对仗+古画+关联五段；也可只写其中几段，作为已有意象的「补充包」
         </div>
-        <div class="bg-white/50 rounded p-3">
-          <b class="text-moyan">CSV · 意象本体表</b>（骨架信息）<br />一行一个意象：名称/分类/别称/情感标签/本义/引申义/演变史。
-          已存在的意象会自动<strong>补全空缺字段</strong>
-        </div>
-        <div class="bg-white/50 rounded p-3">
-          <b class="text-moyan">CSV · 诗文关联表</b>（诗句数据）<br />一行一条「诗文-意象」关联；诗文按 标题+作者 自动去重复用；
+        <div class="bg-white/50 rounded p-3 min-w-0 break-words [overflow-wrap:anywhere]">
+          <b class="text-moyan">CSV · 意象本体 / 诗文关联</b><br />本体表一行一个意象；诗文关联表一行一条「诗文-意象」关联，
+          支持 <code class="bg-black/5 px-1 rounded">translation</code>/<code class="bg-black/5 px-1 rounded">appreciation</code> 人工翻译赏析列（留空由 AI 补全）；
           全文换行写 <code class="bg-black/5 px-1 rounded">\n</code>；情感标签空格分隔
+        </div>
+        <div class="bg-white/50 rounded p-3 min-w-0 break-words [overflow-wrap:anywhere]">
+          <b class="text-moyan">CSV · 对仗 / 共现 / 艺术品</b><br />
+          <span class="text-moyan/80">对仗</span>：word_a / word_b / verse / poet / title<br />
+          <span class="text-moyan/80">共现</span>：name / to / cooccurrence_type / NPMI / diaphaneity / verse / description<br />
+          <span class="text-moyan/80">艺术品</span>：name / artist / dynasty_period / material / size / subject_names / image_url / description / concepts / relation_desc
         </div>
       </div>
     </div>
@@ -63,7 +66,12 @@
         <span>诗文 {{ result.preview.poetry_rows }} 首</span>
         <span>关联 {{ result.preview.rel_rows }} 条</span>
         <span v-if="result.preview.couplet_rows">对仗 {{ result.preview.couplet_rows }} 组</span>
-        <span v-if="result.preview.artwork_rows">古画 {{ result.preview.artwork_rows }} 幅</span>
+        <span v-if="result.preview.artwork_rows">艺术品 {{ result.preview.artwork_rows }} 件</span>
+        <span v-for="(n, fmt) in (result.preview.special_rows || {})" :key="fmt">
+          <template v-if="fmt !== 'csv-artworks'">
+            {{ { 'csv-couplets': '对仗', 'csv-cooccurrence': '共现', 'csv-emotion_stats': '情感统计', 'csv-dynasty_stats': '朝代频次' }[fmt] || fmt }} {{ n }} 行
+          </template>
+        </span>
       </div>
       <div v-if="result.errors?.length" class="mt-4">
         <p class="text-sm font-semibold text-zhusha">错误（{{ result.errors.length }}）</p>
@@ -79,9 +87,14 @@
       </div>
       <div v-if="imported && result.reports?.length" class="mt-4 space-y-1.5">
         <div v-for="(r, i) in result.reports" :key="i" class="text-xs bg-zhuqing/10 border border-zhuqing/25 rounded px-3 py-2">
-          <b class="text-zhuqing">{{ r.concept_created ? '新建' : '补充' }}「{{ r.concept }}」</b>
-          ：诗文 新增{{ r.poetry_new }}/复用{{ r.poetry_reused }}，关联 {{ r.rel_new }} 条（跳过重复 {{ r.rel_skipped }}），
-          对仗 {{ r.couplet_new }}，古画 新增{{ r.artwork_new }}/复用{{ r.artwork_reused }}，意象关联 {{ r.relation_new }}
+          <template v-if="r.type === 'couplets'"><b class="text-zhuqing">对仗表</b>：新增 {{ r.inserted }} 组，跳过重复 {{ r.skipped }}，关联到意象 {{ r.linked_concepts }} 组</template>
+          <template v-else-if="r.type === 'cooccurrence'"><b class="text-zhuqing">共现分析</b>：新增 {{ r.inserted }} 条，更新 {{ r.updated }} 条，同步意象关联 {{ r.relation_synced }} 条</template>
+          <template v-else-if="r.type === 'emotion_stats'"><b class="text-zhuqing">情感统计</b>：{{ r.words }} 个意象 / {{ r.inserted }} 条占比，回补一级情感标注 {{ r.annotated_rels }} 条</template>
+          <template v-else-if="r.type === 'dynasty_stats'"><b class="text-zhuqing">朝代频次</b>：{{ r.words }} 个意象 / {{ r.inserted }} 条频次</template>
+          <template v-else-if="r.type === 'artworks'"><b class="text-zhuqing">艺术品表</b>：新增 {{ r.inserted }} 件，补全 {{ r.updated }} 件，建立意象关联 {{ r.rel_new }} 条</template>
+          <template v-else><b class="text-zhuqing">{{ r.concept_created ? '新建' : '补充' }}「{{ r.concept }}」</b>
+            ：诗文 新增{{ r.poetry_new }}/复用{{ r.poetry_reused }}，关联 {{ r.rel_new }} 条（跳过重复 {{ r.rel_skipped }}），
+            对仗 {{ r.couplet_new }}，艺术品 新增{{ r.artwork_new }}/复用{{ r.artwork_reused }}，意象关联 {{ r.relation_new }}</template>
         </div>
         <p class="text-sm text-zhuqing mt-2">导入完成 ✔ 前台页面、图表、问答已自动生效</p>
       </div>
@@ -98,6 +111,9 @@ const templates = [
   { format: 'json', label: 'JSON 模板', file: 'concept_template.json' },
   { format: 'csv_concepts', label: 'CSV · 意象本体表', file: 'concepts_template.csv' },
   { format: 'csv_poetries', label: 'CSV · 诗文关联表', file: 'poetries_template.csv' },
+  { format: 'csv_artworks', label: 'CSV · 艺术品表', file: 'artworks_template.csv' },
+  { format: 'csv_couplets', label: 'CSV · 对仗表', file: 'couplets_template.csv' },
+  { format: 'csv_cooccurrence', label: 'CSV · 共现分析表', file: 'cooccurrence_template.csv' },
 ]
 
 const files = ref([])

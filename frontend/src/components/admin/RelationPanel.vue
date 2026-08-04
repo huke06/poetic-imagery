@@ -30,9 +30,13 @@
     <!-- 人工关联管理 -->
     <div>
       <div class="flex items-center justify-between mb-3">
-        <h3 class="font-song text-lg font-bold">人工关联</h3>
-        <button class="btn-primary !py-1.5 !text-xs" @click="openCreate">新建关联</button>
+        <h3 class="font-song text-lg font-bold">人工共现关联</h3>
+        <button class="btn-primary !py-1.5 !text-xs" @click="openCreate">新建共现关联</button>
       </div>
+      <p class="text-xs text-qianhui mb-3 leading-6">
+        关联类型已聚焦「共现」分析。批量导入请使用「数据导入」页的 <b class="text-moyan">共现分析 CSV 模板</b>
+        （字段：name / to / cooccurrence_type / NPMI / diaphaneity / verse / description）。
+      </p>
       <div class="space-y-2">
         <div v-for="r in manualEdges" :key="r.id" class="card p-4 flex items-center gap-4">
           <b class="font-song shrink-0">{{ r.from_name }} → {{ r.to_name }}</b>
@@ -44,24 +48,30 @@
     </div>
 
     <!-- 新建弹窗 -->
-    <Modal :show="creating" title="新建意象关联" @close="creating = false">
+    <Modal :show="creating" title="新建共现关联" @close="creating = false">
       <div class="grid grid-cols-2 gap-3">
         <label><span class="text-xs text-qianhui">源意象</span>
           <select v-model.number="form.from_concept_id" class="field">
             <option v-for="c in concepts" :key="c.id" :value="c.id">{{ c.name }}</option>
           </select>
         </label>
-        <label><span class="text-xs text-qianhui">目标意象</span>
+        <label><span class="text-xs text-qianhui">共现意象</span>
           <select v-model.number="form.to_concept_id" class="field">
             <option v-for="c in concepts" :key="c.id" :value="c.id">{{ c.name }}</option>
           </select>
         </label>
-        <label class="col-span-2"><span class="text-xs text-qianhui">关系类型</span>
-          <select v-model="form.relation_type" class="field">
-            <option v-for="t in ['对仗', '共现', '情感同源', '演变衍生']" :key="t">{{ t }}</option>
+        <label><span class="text-xs text-qianhui">共现类型</span>
+          <select v-model="form.cooccurrence_type" class="field">
+            <option v-for="t in ['', '句内', '跨句', '全诗']" :key="t" :value="t">{{ t || '（未分型）' }}</option>
           </select>
         </label>
-        <label class="col-span-2"><span class="text-xs text-qianhui">关系说明</span>
+        <label><span class="text-xs text-qianhui">NPMI（-1~1）</span>
+          <input v-model.number="form.npmi" type="number" step="0.01" min="-1" max="1" class="field" />
+        </label>
+        <label class="col-span-2"><span class="text-xs text-qianhui">共现例句</span>
+          <input v-model="form.verse" class="field" />
+        </label>
+        <label class="col-span-2"><span class="text-xs text-qianhui">阐释说明</span>
           <textarea v-model="form.description" rows="3" class="field"></textarea>
         </label>
       </div>
@@ -113,18 +123,19 @@ async function adopt(s) {
   ].filter(Boolean).join('；')
   await adminCreateRelation({
     from_concept_id: s.from_id, to_concept_id: s.to_id,
-    relation_type: s.shared_poetries.length ? '共现' : '情感同源', description: desc,
+    relation_type: '共现', description: desc,
   })
   await Promise.all([loadSuggestions(), loadManual()])
 }
 
 function openCreate() {
-  form.value = { from_concept_id: concepts.value[0]?.id, to_concept_id: concepts.value[1]?.id, relation_type: '共现', description: '' }
+  form.value = { from_concept_id: concepts.value[0]?.id, to_concept_id: concepts.value[1]?.id,
+    cooccurrence_type: '', npmi: 0, verse: '', description: '' }
   creating.value = true
 }
 
 async function create() {
-  await adminCreateRelation(form.value)
+  await adminCreateRelation({ ...form.value, relation_type: '共现' })
   creating.value = false
   await Promise.all([loadSuggestions(), loadManual()])
 }

@@ -4,28 +4,42 @@ import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import (
-    Artwork, Concept, ConceptArtworkRel, ConceptPoetryRel, ConceptRelation, Couplet, DynastyStats, Poetry,
+    Artwork, Concept, ConceptArtworkRel, ConceptPoetryRel, ConceptRelation,
+    CooccurrenceStat, Couplet, DynastyOccurrenceStat, DynastyStats, EmotionStat, Poetry,
 )
 from ..schemas import ApiResp
 from ..service.share_card import render_exploration_card, render_share_card
 from ..utils import llm
+from ..utils.taxonomy import DYNASTY_GROUPS, EMOTION_MAIN_LABELS, emotion_main_of
 
 router = APIRouter(prefix="/api/concept", tags=["意象"])
 
-# 七大情感主题族（归象用）
+# 七大情感主题族（归象用）——关键词同时覆盖二级情感标签与一级类别名
 EMOTION_THEMES = {
-    "思乡怀人": ["思乡", "怀人", "离别", "离愁", "相思"],
-    "时光咏怀": ["时光流逝", "怀古", "落寞", "惜春"],
-    "孤寂哲思": ["孤寂", "时空永恒", "哲理"],
-    "豪迈壮烈": ["豪迈", "壮烈", "激昂", "慷慨"],
-    "苍凉悲壮": ["苍凉", "悲壮", "边塞", "厌战"],
-    "自然咏物": ["咏物", "山水", "田园", "闲适"],
-    "爱情闺怨": ["爱情", "闺怨", "思念", "怨妇"],
+    "思乡怀人": ["思乡", "怀人", "离别", "离愁", "相思", "思念", "送别", "羁旅",
+                 "交往离别类", "离别交往类"],
+    "时光咏怀": ["时光流逝", "怀古", "落寞", "惜春", "历史文化类", "宴饮欢乐类",
+                 "怀古咏史", "历史感怀"],
+    "孤寂哲思": ["孤寂", "时空永恒", "哲理", "情感心绪类", "人生感悟类", "超脱境界类",
+                 "禅意", "仙道", "超脱", "孤独"],
+    "豪迈壮烈": ["豪迈", "壮烈", "激昂", "慷慨", "志向抱负类", "建功立业", "咏物言志",
+                 "忧国忧民", "家国情怀"],
+    "苍凉悲壮": ["苍凉", "悲壮", "边塞", "厌战", "战争苦难", "边塞苍凉", "民生疾苦"],
+    "自然咏物": ["咏物", "山水", "田园", "闲适", "自然山水类", "季节感怀类", "自然赞美",
+                 "山水闲适"],
+    "爱情闺怨": ["爱情", "闺怨", "怨妇", "相思之情"],
+}
+
+# 一级情感类别 → 主题族（关键词未命中时的兜底归类）
+PRIMARY_TO_THEME = {
+    "自然山水类": "自然咏物", "历史文化类": "时光咏怀", "超脱境界类": "孤寂哲思",
+    "人生感悟类": "孤寂哲思", "交往离别类": "思乡怀人", "志向抱负类": "豪迈壮烈",
+    "情感心绪类": "孤寂哲思",
 }
 
 
@@ -49,14 +63,29 @@ def _infer_role(clause: str, concept_name: str) -> str:
 
 
 def _classify_theme(emotion_tags: list[str]) -> str:
-    """将意象情感标签归类到七大主题族"""
+    """将意象情感标签归类到七大主题族。
+
+    三级兜底：① 关键词精确计分 → ② 一级情感类别映射 → ③ 子串模糊匹配 → 默认自然咏物。
+    """
     scores = {theme: 0 for theme in EMOTION_THEMES}
     for tag in emotion_tags:
         for theme, keywords in EMOTION_THEMES.items():
             if tag in keywords:
                 scores[theme] += 1
     best = max(scores, key=scores.get)
-    return best if scores[best] > 0 else "自然咏物"
+    if scores[best] > 0:
+        return best
+    # 兜底一：标签本身是一级情感类别（导入数据常见）
+    for tag in emotion_tags:
+        main = emotion_main_of(tag)
+        if main in PRIMARY_TO_THEME:
+            return PRIMARY_TO_THEME[main]
+    # 兜底二：子串模糊匹配
+    for tag in emotion_tags:
+        for theme, keywords in EMOTION_THEMES.items():
+            if any(k in tag or tag in k for k in keywords):
+                return theme
+    return "自然咏物"
 
 
 def _cooccurrence_stats(db: Session, cid_a: int, cid_b: int) -> dict:
@@ -108,16 +137,40 @@ def _cooccurrence_stats(db: Session, cid_a: int, cid_b: int) -> dict:
 def concept_list(
     category: str = Query("", description="一级分类筛选"),
     keyword: str = Query("", description="名称关键词"),
+    emotion_main: str = Query("", description="一级情感筛选"),
+    emotion: str = Query("", description="二级情感筛选"),
     db: Session = Depends(get_db),
 ):
-    """意象列表"""
+    """意象列表（支持分类/关键词/一二级情感筛选，返回情感树供前端渲染）"""
     q = db.query(Concept)
     if category:
         q = q.filter(Concept.category_main == category)
     if keyword:
         q = q.filter(Concept.name.contains(keyword))
+
+    # 先聚合全库情感树（一级 → 二级集合），不受当前筛选影响，保证筛选器选项稳定
+    emotion_tree: dict[str, set] = {}
+    for c in db.query(Concept).all():
+        for tag in _split_tags(c):
+            if tag in EMOTION_MAIN_LABELS:
+                continue  # 一级类别名本身不作为二级选项
+            main = emotion_main_of(tag)
+            if main:
+                emotion_tree.setdefault(main, set()).add(tag)
+    emotion_tree_sorted = {
+        m: sorted(emotion_tree[m]) for m in EMOTION_MAIN_LABELS if m in emotion_tree
+    }
+
     items = []
     for c in q.order_by(Concept.id).all():
+        tags = _split_tags(c)
+        mains = [m for m in EMOTION_MAIN_LABELS
+                 if any(emotion_main_of(t) == m for t in tags)]
+        # 情感筛选（一级命中任一标签即可；二级需精确含该标签）
+        if emotion_main and emotion_main not in mains:
+            continue
+        if emotion and emotion not in tags:
+            continue
         classic = (
             db.query(ConceptPoetryRel)
             .filter_by(concept_id=c.id, is_classic=1)
@@ -134,12 +187,12 @@ def concept_list(
             "id": c.id, "name": c.name,
             "category_main": c.category_main, "category_sub": c.category_sub,
             "aliases": [a for a in c.aliases.split(",") if a],
-            "emotion_tags": _split_tags(c), "theme_color": c.theme_color,
+            "emotion_tags": tags, "emotion_mains": mains, "theme_color": c.theme_color,
             "classic_clause": classic.clause if classic else "",
             "artwork_thumb": thumb[0] if thumb else "",
             "poetry_count": poetry_count,
         })
-    return ApiResp(data={"total": len(items), "items": items})
+    return ApiResp(data={"total": len(items), "items": items, "emotion_tree": emotion_tree_sorted})
 
 
 @router.get("/resolve")
@@ -293,7 +346,7 @@ def recommend_similar(
 
 @router.get("/{concept_id}")
 def concept_detail(concept_id: int, db: Session = Depends(get_db)):
-    """意象详情：基础信息 + 朝代统计 + 情感分布 + 对仗词组"""
+    """意象详情：基础信息 + 朝代统计 + 情感分布 + 对仗词组 + v3 聚合统计"""
     c = db.get(Concept, concept_id)
     if not c:
         raise HTTPException(404, "意象不存在")
@@ -308,18 +361,47 @@ def concept_detail(concept_id: int, db: Session = Depends(get_db)):
         {"word_a": cp.word_a, "word_b": cp.word_b, "verse": cp.verse, "source": cp.source}
         for cp in db.query(Couplet).filter_by(concept_id=c.id).all()
     ]
+
+    # ── v3：情感标签占比统计（环形饼图数据源） ──
+    aliases = [a for a in c.aliases.split(",") if a]
+    word_variants = [c.name] + aliases
+    emo_rows = db.query(EmotionStat).filter(EmotionStat.word.in_(word_variants)).all()
+    # 多词合并：同一二级标签取占比最大者
+    merged_emo: dict[str, dict] = {}
+    for r in emo_rows:
+        cur = merged_emo.get(r.emotion)
+        if not cur or r.ratio > cur["ratio"]:
+            merged_emo[r.emotion] = {"emotion": r.emotion, "category": r.category,
+                                     "count": r.count, "ratio": r.ratio}
+    emotion_tag_stats = sorted(merged_emo.values(), key=lambda x: x["ratio"], reverse=True)
+
+    # ── v3：朝代出现频次统计（演变脉络数据源，九大朝代段） ──
+    dyn_rows = db.query(DynastyOccurrenceStat).filter(DynastyOccurrenceStat.word.in_(word_variants)).all()
+    merged_dyn: dict[str, int] = {}
+    for r in dyn_rows:
+        merged_dyn[r.dynasty] = max(merged_dyn.get(r.dynasty, 0), r.count)
+    dynasty_occurrence = [{"dynasty": g, "count": merged_dyn.get(g, 0)} for g in DYNASTY_GROUPS]
+
+    # ── v3：本意象名句涉及的一级情感标签 ──
+    mains = sorted({r.emotion_main for r in db.query(ConceptPoetryRel)
+                    .filter_by(concept_id=c.id).all() if r.emotion_main},
+                   key=lambda m: EMOTION_MAIN_LABELS.index(m) if m in EMOTION_MAIN_LABELS else 99)
+
     poetry_count = db.query(func.count(func.distinct(ConceptPoetryRel.poetry_id))).filter_by(concept_id=c.id).scalar()
     artwork_count = db.query(ConceptArtworkRel).filter_by(concept_id=c.id).count()
     return ApiResp(data={
         "id": c.id, "name": c.name,
         "category_main": c.category_main, "category_sub": c.category_sub,
-        "aliases": [a for a in c.aliases.split(",") if a],
+        "aliases": aliases,
         "original_meaning": c.original_meaning, "poetic_meaning": c.poetic_meaning,
         "emotion_tags": _split_tags(c), "origin_dynasty": c.origin_dynasty,
         "peak_dynasty": c.peak_dynasty, "description": c.description,
         "theme_color": c.theme_color,
         "dynasty_stats": dynasty_stats,
         "emotion_stats": [{"emotion": k, "count": v} for k, v in emotion_counter.items()],
+        "emotion_tag_stats": emotion_tag_stats,
+        "dynasty_occurrence": dynasty_occurrence,
+        "emotion_mains": mains,
         "couplets": couplets,
         "poetry_count": poetry_count, "artwork_count": artwork_count,
     })
@@ -329,11 +411,12 @@ def concept_detail(concept_id: int, db: Session = Depends(get_db)):
 def concept_poetries(
     concept_id: int,
     dynasty: str = Query("", description="按朝代筛选"),
-    emotion: str = Query("", description="按情感筛选"),
+    emotion: str = Query("", description="按二级情感标签筛选"),
+    emotion_main: str = Query("", description="按一级情感标签筛选"),
     page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=50),
     db: Session = Depends(get_db),
 ):
-    """意象关联名句列表（分页，支持朝代/情感筛选）"""
+    """意象关联名句列表（分页，支持朝代/二级情感/一级情感筛选）"""
     if not db.get(Concept, concept_id):
         raise HTTPException(404, "意象不存在")
     q = (
@@ -345,11 +428,14 @@ def concept_poetries(
         q = q.filter(Poetry.dynasty == dynasty)
     if emotion:
         q = q.filter(ConceptPoetryRel.emotion == emotion)
+    if emotion_main:
+        q = q.filter(ConceptPoetryRel.emotion_main == emotion_main)
     total = q.count()
     rows = (q.order_by(ConceptPoetryRel.is_classic.desc(), ConceptPoetryRel.weight.desc(), Poetry.id)
              .offset((page - 1) * page_size).limit(page_size).all())
     items = [{
         "rel_id": rel.id, "clause": rel.clause, "emotion": rel.emotion,
+        "emotion_main": rel.emotion_main or emotion_main_of(rel.emotion),
         "is_classic": rel.is_classic, "weight": rel.weight,
         "poetry": {"id": p.id, "title": p.title, "author": p.author, "dynasty": p.dynasty, "writing_type": p.writing_type},
     } for rel, p in rows]
@@ -434,6 +520,172 @@ def concept_relations(concept_id: int, db: Session = Depends(get_db)):
                 "relation_type": "共现", "description": desc, "auto": True, "cooccurrence": stats,
             })
     return ApiResp(data={"nodes": nodes, "edges": edge_items})
+
+
+@router.get("/{concept_id}/cooccurrence")
+def concept_cooccurrence(concept_id: int, limit: int = Query(24, ge=1, le=60),
+                         db: Session = Depends(get_db)):
+    """共现分析知识图谱（v3）：探索意象居中，共现意象环绕连线。
+
+    线形规则：粗细=NPMI（归一化[-1,1]映射）；线型=共现类型（实线句内/虚线跨句/点线全诗）；
+    透明度=diaphaneity（0.2 为最低值）。
+    数据源：cooccurrence_stat 表（CSV 导入的分析结果），库内人工关联补充。
+    """
+    c = db.get(Concept, concept_id)
+    if not c:
+        raise HTTPException(404, "意象不存在")
+
+    aliases = [a for a in c.aliases.split(",") if a]
+    word_variants = [c.name] + aliases
+
+    # ── 收集共现边（词对级统计表） ──
+    edges_map: dict[str, dict] = {}
+    stat_rows = db.query(CooccurrenceStat).filter(
+        or_(CooccurrenceStat.word_a.in_(word_variants),
+            CooccurrenceStat.word_b.in_(word_variants))).all()
+    for r in stat_rows:
+        other = r.word_b if r.word_a in word_variants else r.word_a
+        if other == c.name or other in aliases:
+            continue
+        prev = edges_map.get(other)
+        # 同一共现词多条记录时保留 NPMI 更高者
+        if prev and prev["npmi"] >= r.npmi:
+            continue
+        edges_map[other] = {
+            "other": other, "npmi": r.npmi, "type": r.cooccurrence_type,
+            "diaphaneity": r.diaphaneity, "verse": r.verse, "description": r.description,
+            "same_sentence": r.same_sentence, "adjacent_sentence": r.adjacent_sentence,
+            "same_poem": r.same_poem, "source": "stat",
+        }
+
+    # ── 库内人工/同步关联补充（concept_relation） ──
+    concept_ids = {c.id}
+    rel_rows = db.query(ConceptRelation).filter(
+        or_(ConceptRelation.from_concept_id == c.id,
+            ConceptRelation.to_concept_id == c.id)).all()
+    id2name = {}
+    for e in rel_rows:
+        other_id = e.to_concept_id if e.from_concept_id == c.id else e.from_concept_id
+        concept_ids.add(other_id)
+    for cc in db.query(Concept).filter(Concept.id.in_(concept_ids)).all():
+        id2name[cc.id] = cc
+    for e in rel_rows:
+        other_id = e.to_concept_id if e.from_concept_id == c.id else e.from_concept_id
+        other_concept = id2name.get(other_id)
+        if not other_concept or other_concept.id == c.id:
+            continue
+        other = other_concept.name
+        if other in edges_map and edges_map[other]["npmi"] >= e.npmi:
+            continue
+        edges_map[other] = {
+            "other": other, "npmi": e.npmi, "type": e.cooccurrence_type,
+            "diaphaneity": e.diaphaneity, "verse": e.verse, "description": e.description,
+            "same_sentence": e.same_sentence, "adjacent_sentence": e.adjacent_sentence,
+            "same_poem": e.same_poem, "source": "relation", "concept_id": other_id,
+        }
+
+    # ── 排序取 top N，构建节点 ──
+    edges = sorted(edges_map.values(), key=lambda x: (x["npmi"], x["same_poem"]), reverse=True)[:limit]
+    other_names = [e["other"] for e in edges]
+    name2concept = {}
+    for cc in db.query(Concept).filter(Concept.name.in_(other_names)).all():
+        name2concept[cc.name] = cc
+
+    nodes = [{
+        "id": f"c{c.id}", "name": c.name, "center": True,
+        "concept_id": c.id, "theme_color": c.theme_color,
+    }]
+    for e in edges:
+        oc = name2concept.get(e["other"])
+        e["concept_id"] = oc.id if oc else None
+        nodes.append({
+            "id": f"n{e['other']}", "name": e["other"], "center": False,
+            "concept_id": oc.id if oc else None,
+            "theme_color": oc.theme_color if oc else "#8A6D3B",
+        })
+
+    edge_items = [{
+        "source": f"c{c.id}", "target": f"n{e['other']}",
+        "name": e["other"], "npmi": e["npmi"], "type": e["type"],
+        "diaphaneity": max(0.2, min(1.0, e["diaphaneity"] or 0.2)),
+        "verse": e["verse"], "description": e["description"],
+        "same_sentence": e["same_sentence"], "adjacent_sentence": e["adjacent_sentence"],
+        "same_poem": e["same_poem"], "concept_id": e.get("concept_id"),
+    } for e in edges]
+
+    return ApiResp(data={
+        "concept_id": c.id, "concept_name": c.name,
+        "nodes": nodes, "edges": edge_items,
+    })
+
+
+@router.get("/{concept_id}/usage-summary")
+def concept_usage_summary(concept_id: int, refresh: bool = Query(False), db: Session = Depends(get_db)):
+    """AI 用法谱系总结：DB 缓存优先 → LLM 生成 → 回写缓存"""
+    c = db.get(Concept, concept_id)
+    if not c:
+        raise HTTPException(404, "意象不存在")
+    if c.usage_summary and not refresh:
+        return ApiResp(data={"source": "cache", "text": c.usage_summary})
+
+    # 组装上下文：诗人用法 + 情感功能统计
+    spectrum = _build_spectrum(db, c)
+    emo_stats = db.query(EmotionStat).filter(EmotionStat.word == c.name).order_by(
+        EmotionStat.ratio.desc()).limit(6).all()
+
+    if llm.llm_available():
+        poet_desc = "；".join(
+            f"{s['poet']}（{s['dynasty']}）以「{s['representative_verse']}」寄{ s['emotion_function']}"
+            for s in spectrum[:6]) or "暂无具体诗人用例"
+        emo_desc = "、".join(f"{e.emotion}({e.ratio:.1f}%)" for e in emo_stats) or "、".join(_split_tags(c))
+        prompt = (
+            f"请为古典诗词意象「{c.name}」撰写一段 120-180 字的用法谱系总结。\n"
+            f"该意象的核心情感功能占比：{emo_desc}。\n"
+            f"历代诗人用法：{poet_desc}。\n"
+            f"要求：概括该意象在不同诗人笔下的主要情感功能与风格差异，点明其用法流变，语言典雅凝练，直接成文。"
+        )
+        result = llm.chat([
+            {"role": "system", "content": "你是古典诗词意象研究专家，撰写凝练典雅的用法谱系总结。"},
+            {"role": "user", "content": prompt},
+        ], temperature=0.5)
+        if result:
+            c.usage_summary = result.strip()
+            db.commit()
+            return ApiResp(data={"source": "llm", "text": c.usage_summary})
+
+    fallback = (f"「{c.name}」意象在历代诗人笔下承载了丰富的情感意蕴，"
+                f"其核心情感功能集中于{ '、'.join(_split_tags(c)) or '山水寄情' }，"
+                f"或借景抒怀，或托物言志，随时代流变而意蕴层叠，构成了一条绵延的用法谱系。")
+    return ApiResp(data={"source": "local", "text": c.usage_summary or fallback,
+                         "note": "配置大模型后可生成更精准的 AI 总结"})
+
+
+def _build_spectrum(db: Session, c: Concept) -> list[dict]:
+    """复用用法谱系逻辑（供 AI 总结取数）"""
+    poet_map: dict[str, list] = {}
+    rels = (
+        db.query(ConceptPoetryRel, Poetry)
+        .join(Poetry, ConceptPoetryRel.poetry_id == Poetry.id)
+        .filter(ConceptPoetryRel.concept_id == c.id)
+        .order_by(ConceptPoetryRel.is_classic.desc(), ConceptPoetryRel.weight.desc())
+        .all()
+    )
+    for rel, p in rels:
+        poet_map.setdefault(p.author, []).append({
+            "clause": rel.clause, "emotion": rel.emotion,
+            "is_classic": rel.is_classic, "poetry_title": p.title, "dynasty": p.dynasty,
+        })
+    spectrum = []
+    for poet, items in poet_map.items():
+        best = max(items, key=lambda x: (x["is_classic"], len(x["clause"])))
+        emotions = list(dict.fromkeys(i["emotion"] for i in items if i["emotion"]))
+        spectrum.append({
+            "poet": poet, "dynasty": items[0]["dynasty"],
+            "verse_count": len(items), "representative_verse": best["clause"],
+            "emotion_function": "、".join(emotions) if emotions else "待标注",
+        })
+    spectrum.sort(key=lambda x: x["verse_count"], reverse=True)
+    return spectrum
 
 
 @router.get("/{concept_id}/share-card")

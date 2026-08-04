@@ -202,5 +202,9 @@ class ComposeResp(BaseModel):
 class RelationUpsert(BaseModel):
     from_concept_id: int
     to_concept_id: int
-    relation_type: str
+    relation_type: str = "共现"
     description: str = ""
+    cooccurrence_type: str = ""      # 句内/跨句/全诗
+    npmi: float = 0.0
+    diaphaneity: float = 0.2
+    verse: str = ""

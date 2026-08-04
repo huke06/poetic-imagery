@@ -13,6 +13,13 @@ backend/.venv/
 # ── 数据库（可由脚本重建，见 README「重建数据库」）──
 backend/*.db
 *.sqlite3
+# 数据库备份
+*.db.bak
+backend/*.db.bak
+
+# ── 本地原始导入数据与参考素材（非源码，体积大）──
+测试数据/
+others/
 
 # ── Node / 前端 ──
 node_modules/

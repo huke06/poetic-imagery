@@ -132,7 +132,7 @@ def poetry_translate(poetry_id: int, db: Session = Depends(get_db)):
             f"每行格式：原文 → 译文\n\n《{p.title}》\n{p.content}"
         )
         result = llm.chat([
-            {"role": "system", "content": "你是古典诗词翻译专家，逐句翻译为现代汉语，保留意境。"},
+            {"role": "system", "content": "你是古典诗词翻译专家，逐句翻译为现代汉语，保留意境。仅输出纯文本，不要使用任何 Markdown 符号（如 **、#、- 等）。"},
             {"role": "user", "content": prompt},
         ], temperature=0.3)
         if result:
@@ -160,7 +160,7 @@ def poetry_appreciation(poetry_id: int, db: Session = Depends(get_db)):
             f"《{p.title}》·{p.dynasty}·{p.author}\n{p.content}"
         )
         result = llm.chat([
-            {"role": "system", "content": "你是古典诗词鉴赏专家，赏析聚焦意象、情感、手法，简要精当。"},
+            {"role": "system", "content": "你是古典诗词鉴赏专家，赏析聚焦意象、情感、手法，简要精当。仅输出纯文本，不要使用任何 Markdown 符号（如 **、#、- 等）。"},
             {"role": "user", "content": prompt},
         ], temperature=0.5)
         if result:
@@ -184,7 +184,7 @@ def pregenerate_for_poem(db: Session, p: Poetry):
         )
         try:
             tr = llm.chat([
-                {"role": "system", "content": "你是古典诗词翻译专家，逐句翻译为现代汉语。"},
+                {"role": "system", "content": "你是古典诗词翻译专家，逐句翻译为现代汉语。仅输出纯文本，不要使用任何 Markdown 符号（如 **、#、- 等）。"},
                 {"role": "user", "content": prompt_tr},
             ], temperature=0.3)
             if tr:
@@ -198,7 +198,7 @@ def pregenerate_for_poem(db: Session, p: Poetry):
         )
         try:
             ap = llm.chat([
-                {"role": "system", "content": "你是古典诗词鉴赏专家，赏析聚焦意象、情感、手法，简要精当。"},
+                {"role": "system", "content": "你是古典诗词鉴赏专家，赏析聚焦意象、情感、手法，简要精当。仅输出纯文本，不要使用任何 Markdown 符号（如 **、#、- 等）。"},
                 {"role": "user", "content": prompt_ap},
             ], temperature=0.5)
             if ap:
@@ -249,7 +249,7 @@ def _generate_annotation(p, r, c) -> str:
                 f"情感标签：{r.emotion or '未标注'}"
             )
             result = llm.chat([
-                {"role": "system", "content": "你是古典诗词笺注专家，做 80-120 字深度解析，聚焦意象在句中的具体作用。"},
+                {"role": "system", "content": "你是古典诗词笺注专家，做 80-120 字深度解析，聚焦意象在句中的具体作用。仅输出纯文本，不要使用任何 Markdown 符号。"},
                 {"role": "user", "content": prompt},
             ], temperature=0.4, timeout=15)
             if result and len(result.strip()) >= 20:

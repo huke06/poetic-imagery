@@ -1,9 +1,9 @@
-<!-- AI 助手悬浮窗 — 右下角，支持随时调用 -->
+<!-- AI 助手悬浮窗 — 右下角，支持随时调用 · 可沿右侧拖拽调整位置 -->
 <template>
-  <div class="ai-float-root">
+  <div class="ai-float-root" :style="{ bottom: bottom + 'px' }">
     <!-- Collapsed button -->
     <Transition name="swap">
-      <button v-if="!open" class="ai-float-btn" @click="open = true" title="诗象问答">
+      <button v-if="!open" class="ai-float-btn" @pointerdown="onPointerDown" @click="onBtnClick" title="诗象问答（可拖拽移动）">
         <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
           <circle cx="16" cy="14" r="8" stroke="#F5F1E8" stroke-width="2"/>
           <path d="M10 24 C10 20 22 20 22 24" stroke="#F5F1E8" stroke-width="2" stroke-linecap="round"/>
@@ -16,9 +16,9 @@
     <!-- Expanded window -->
     <Transition name="slide">
       <div v-if="open" class="ai-float-card">
-        <div class="ai-float-head">
+        <div class="ai-float-head" @pointerdown="onPointerDown" title="拖拽移动">
           <span class="font-kai text-sm font-bold text-moyan/80">诗象问答</span>
-          <button class="ai-float-close" @click="open = false">×</button>
+          <button class="ai-float-close no-drag" @click="open = false">×</button>
         </div>
 
         <div class="ai-float-body" ref="bodyRef">
@@ -57,12 +57,23 @@
 <script setup>
 import { nextTick, ref, watch } from 'vue'
 import { agentAsk } from '../api'
+import { useSideDrag } from '../composables/useSideDrag'
 
 const open = ref(false)
+// 展开时卡片高约 420+56，收紧上限避免顶部溢出屏幕
+const { bottom, onPointerDown, wasDragged, reclamp } = useSideDrag(
+  'sxz_ai_float_pos', 20, () => (window.innerHeight || 800) - (open.value ? 500 : 70))
+watch(open, reclamp)
+
 const input = ref('')
 const msgs = ref([])
 const loading = ref(false)
 const bodyRef = ref(null)
+
+// 区分点击与拖拽：拖拽后不触发打开
+function onBtnClick() {
+  if (!wasDragged()) open.value = true
+}
 
 async function send() {
   const q = input.value.trim()
@@ -91,16 +102,18 @@ watch(open, async (v) => {
 </script>
 
 <style scoped>
-.ai-float-root { position: fixed; right: 20px; bottom: 20px; z-index: 81; }
+.ai-float-root { position: fixed; right: 20px; z-index: 81; }
 
 .ai-float-btn {
   width: 48px; height: 48px; border-radius: 50%;
-  background: #2B4C7E; border: none; cursor: pointer;
+  background: #2B4C7E; border: none; cursor: grab;
   box-shadow: 0 4px 18px rgba(43,76,126,0.35);
   display: flex; align-items: center; justify-content: center;
-  transition: all 0.3s;
+  transition: box-shadow 0.3s;
+  user-select: none; touch-action: none;
 }
-.ai-float-btn:hover { transform: scale(1.08); box-shadow: 0 6px 24px rgba(43,76,126,0.5); }
+.ai-float-btn:active { cursor: grabbing; }
+.ai-float-btn:hover { box-shadow: 0 6px 24px rgba(43,76,126,0.5); }
 
 .ai-float-card {
   position: absolute; bottom: 56px; right: 0;
@@ -114,7 +127,9 @@ watch(open, async (v) => {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 14px; border-bottom: 1px solid rgba(160,135,100,0.12);
   flex-shrink: 0;
+  cursor: grab; user-select: none; touch-action: none;
 }
+.ai-float-head:active { cursor: grabbing; }
 .ai-float-close {
   font-size: 18px; color: #9A8B70; cursor: pointer;
   width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;

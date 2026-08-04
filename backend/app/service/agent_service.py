@@ -153,9 +153,12 @@ def _build_rag_prompt(concepts, poetries, artworks, question, shared_pids, menti
             parts.append(f"《{a['name']}》（{a['dynasty']}·{a['artist']}）")
     prompt = (
         "你是古诗词意象专家。请基于以下资料回答用户问题。\n"
-        "**务必做到**：① 引用的每首诗的标题都必须在上面资料中出现过，不得编造；"
-        "② 优先引用【⚠ 共享作品】里的篇目；③ 使用引用格式：**《篇名》**（朝代·作者）。"
-        "若资料不足以完全回答，可有限补充你的常识但须说明。语言典雅简洁，分条列点。\n\n"
+        "要求：① 引用资料中出现的诗篇时用《篇名》（朝代·作者）格式，不得编造出处；"
+        "② 优先引用【⚠ 共享作品】里的篇目；"
+        "③ 若资料不足以完整回答，请大胆运用你的古典诗词学识补充作答，"
+        "并注明哪些是『据本地资料』、哪些是『学识补充』，切勿以资料不足为由拒绝回答；"
+        "如『哪些诗人最爱用某意象』这类问题，应据学识给出合理判断与简要理由。"
+        "语言典雅简洁，输出纯文本，不要使用 Markdown 符号（如 **、#、- 等）。\n\n"
         + "\n".join(parts)
         + f"\n\n【用户问题】{question}"
     )
@@ -289,7 +292,13 @@ def ask(db: Session, question: str, context_msgs: list[dict] | None = None) -> d
 
     if llm.llm_available():
         # 对话历史放入 system 消息——LLM 必须根据历史解析当前问题中的指代（"他"、"这首诗"等）
-        system_text = "你是严谨的古典诗词助手，只引用资料中出现的篇目，标注出处。若资料不足以回答，可回复[搜索:关键词]指令来查库。"
+        system_text = (
+            "你是博学的古典诗词助手。回答时优先引用本地资料中的篇目并标注出处；"
+            "当资料不足以完整回答时，请自由运用你的古典诗词学识补充作答，"
+            "并用『据本地资料』与『学识补充』加以区分。"
+            "切勿因资料缺乏量化数据而拒绝回答——应尽力给出有依据、有分寸的解答，"
+            "对无法确证之处如实说明即可。回答使用纯文本，不用 Markdown 符号。"
+        )
         if context_msgs:
             lines = []
             for m in context_msgs[-6:]:
@@ -374,3 +383,107 @@ def _local_answer(question, concepts, emotions, poetries, shared_pids):
         parts.append(f"演变：{c0.name}意象起源于{c0.origin_dynasty}，鼎盛于{c0.peak_dynasty}。{c0.description[:80]}……")
     parts.append("（以上由本地意象知识库生成，所有引用可溯源。）")
     return "\n\n".join(parts)
+
+
+# ═══════════════ 意象创诗 ═══════════════
+STYLE_SPECS = {
+    "五言绝句": {"lines": 4, "chars": 5},
+    "七言绝句": {"lines": 4, "chars": 7},
+    "五言律诗": {"lines": 8, "chars": 5},
+    "七言律诗": {"lines": 8, "chars": 7},
+}
+
+
+def _parse_compose_output(out: str, concepts: list, style: str) -> tuple[str, str]:
+    """解析 LLM 输出中的 标题/诗句；失败时兜底提取"""
+    title, poem = "", ""
+    lines = [l.strip() for l in out.splitlines()]
+    poem_started = False
+    poem_parts = []
+    markers = ("诗文：", "诗文:", "全诗：", "全诗:", "诗：", "诗:")
+    for s in lines:
+        if not s:
+            continue
+        if s.startswith(("标题：", "标题:", "题目：", "题目:")):
+            title = s.split("：", 1)[-1].split(":", 1)[-1].strip().strip("《》")
+            continue
+        if s.startswith(markers):
+            head = s.split("：", 1)[-1].split(":", 1)[-1].strip()
+            if head:
+                poem_parts.append(head)
+            poem_started = True
+            continue
+        if poem_started:
+            poem_parts.append(s)
+    poem = "\n".join(poem_parts)
+    if not poem:
+        # 兜底：取非标题行的连续文本
+        cand = [l for l in lines if l and not l.startswith(("标题", "题目"))]
+        poem = "\n".join(cand)
+    poem = poem.replace("\\n", "\n").strip("《》 ").strip()
+    if not title:
+        title = f"咏{'·'.join(concepts[:2])}" if concepts else "无题"
+    return title, poem
+
+
+def _local_compose(concepts: list, style: str, theme: str) -> dict:
+    """无 LLM 时的模板创诗兜底：将意象嵌入固定句式，凑足字数"""
+    spec = STYLE_SPECS.get(style, STYLE_SPECS["七言绝句"])
+    n_chars, n_lines = spec["chars"], spec["lines"]
+    name = (concepts[0] if concepts else "月")
+    tails = {
+        5: ["生清辉", "入梦来", "寄远思", "动客愁", "照无眠"],
+        7: ["光照彻古今情", "一片入梦来", "犹照离人衣", "共看应相似", "千里与君同"],
+    }
+    pool = tails.get(n_chars, tails[7])
+    lines = []
+    for i in range(n_lines):
+        tail = pool[i % len(pool)]
+        prefix = "咏" if n_chars - len(name) - len(tail) == 1 else ""
+        line = (prefix + name + tail)
+        line = line[:n_chars]
+        while len(line) < n_chars:
+            line += "云山川月夜雪"[len(line) % 6]
+        lines.append(line)
+    poem = "\n".join(lines)
+    note = "未配置大模型，此为模板示例。配置 LLM 后可获得真正依格律创作的诗句。"
+    return {"poem": poem, "title": f"咏{name}", "style": style, "source": "local",
+            "tones": poem_tones(lines), "note": note}
+
+
+def compose(db: Session, concepts: list, style: str, theme: str = "") -> dict:
+    """意象创诗：输入意象+体裁+情感基调，返回诗作+平仄标注"""
+    spec = STYLE_SPECS.get(style) or STYLE_SPECS["七言绝句"]
+    style = next((k for k in STYLE_SPECS if STYLE_SPECS[k] == spec), style)
+
+    # 收集意象上下文
+    cinfo = []
+    for cname in concepts[:5]:
+        c = db.query(Concept).filter_by(name=cname).first()
+        if c and c.poetic_meaning:
+            cinfo.append(f"「{c.name}」：{c.poetic_meaning[:70]}（情感：{c.emotion_tags}）")
+        else:
+            cinfo.append(f"「{cname}」")
+    context = "；".join(cinfo) if cinfo else ""
+
+    if llm.llm_available():
+        theme_line = f"④ 情感基调为「{theme}」，请融情入景；" if theme else ""
+        prompt = (
+            f"请以古典诗词意象「{'、'.join(concepts)}」为题，创作一首{style}。\n"
+            f"要求：① 全诗 {spec['lines']} 句，每句 {spec['chars']} 字（不含标点）；"
+            f"② 自然融入{'、'.join(concepts)}意象；③ 尽量合乎格律、押韵；"
+            f"{theme_line}⑤ 为作品拟一个标题。\n"
+            + (f"意象参考：{context}\n" if context else "")
+            + "请严格按以下格式输出，不要输出其它内容：\n标题：<标题>\n诗文：<全诗，每句用\\n分隔>"
+        )
+        out = llm.chat([
+            {"role": "system", "content": "你是古典诗词创作名家，精通平仄格律与唐宋意象。仅按用户要求的格式输出。"},
+            {"role": "user", "content": prompt},
+        ], temperature=0.9)
+        if out:
+            title, poem = _parse_compose_output(out, concepts, style)
+            lines = [l.strip() for l in poem.split("\n") if l.strip()]
+            return {"poem": "\n".join(lines), "title": title, "style": style, "source": "llm",
+                    "tones": poem_tones(lines), "note": "AI 依格律创作，平仄按现代读音标注，仅供参考。"}
+
+    return _local_compose(concepts, style, theme)

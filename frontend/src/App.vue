@@ -58,6 +58,8 @@
     <GoldenLeafPanel />
     <!-- AI 助手悬浮窗 -->
     <AiFloatingWidget />
+    <!-- 新手引导 -->
+    <OnboardingGuide />
 
     <!-- 页脚 -->
     <footer class="mt-20 border-t border-shiqing/10 bg-white/30">
@@ -82,6 +84,7 @@ import { searchPoetry } from './api'
 import { auth } from './stores/auth'
 import AiFloatingWidget from './components/AiFloatingWidget.vue'
 import GoldenLeafPanel from './components/GoldenLeafPanel.vue'
+import OnboardingGuide from './components/OnboardingGuide.vue'
 
 onMounted(() => auth.init())
 
@@ -90,8 +93,8 @@ const navItems = [
   { to: '/', label: '首页' },
   { to: '/concepts', label: '意象画廊' },
   { to: '/atlas', label: '诗意图鉴' },
-  { to: '/artworks', label: '古画展厅' },
-  { to: '/agent', label: '智能助手' },
+  { to: '/artworks', label: '艺术展厅' },
+  { to: '/agent', label: '灵犀助手' },
 ]
 const isActive = (to) => (to === '/' ? route.path === '/' : route.path.startsWith(to))
 

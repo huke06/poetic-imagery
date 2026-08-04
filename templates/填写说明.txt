@@ -32,7 +32,23 @@
   emotion         情感标签，必须是 concept_tags 之一
   is_classic      1=经典名句  0=否（名句会成为意象卡片封面句）
   weight          3=千古名句  2=名篇警句  1=一般关联
-  ※ 同一首诗关联多句：多写几行，content 可重复
+  translation     现代汉语翻译（选填，换行写字面 
+；留空则由 AI 自动补全）
+  appreciation    文学赏析（选填，留空则由 AI 自动补全）
+  ※ 同一首诗关联多句：多写几行，content 可重复；翻译/赏析只需在其中一行填写
+  ※ 人工填写的翻译/赏析优先入库，覆盖已有 AI 生成缓存
+
+【artworks_template.csv · 艺术品表】一行 = 一件艺术品
+  name            作品名（必填）      artist  作者（默认佚名）
+  dynasty_period  朝代·时期（如 清代·清雍正；系统自动识别主朝代用于检索统计）
+  material        材质                size    尺寸
+  subject_names   主题，分号分隔（如 中国绘画;山水）
+  image_url       作品图片链接（留空自动生成水墨占位图；也可导入后在后台上传）
+  description     作品介绍，换行写字面 
+
+  concepts        关联意象，空格/顿号分隔（须为库内已有意象）
+  relation_desc   诗画关联阐释（会展示在意象卡片「诗画相映」板块）
+  ※ 同名同作者的作品只补全空缺字段，不重复录入
 
 【concept_template.json · 富格式】
   功能最全：本体+诗文+对仗+古画+关联五段，可只写部分段落作「补充包」。

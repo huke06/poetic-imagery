@@ -24,6 +24,8 @@ export const shareCardUrl = (id) => `/api/concept/${id}/share-card`
 export const explorationCardUrl = '/api/concept/exploration-card'
 export const resolveConcept = (q) => http.get('/api/concept/resolve', { params: { q } })
 export const getConceptUsageSpectrum = (id) => http.get(`/api/concept/${id}/usage-spectrum`)
+export const getConceptCooccurrence = (id, params = {}) => http.get(`/api/concept/${id}/cooccurrence`, { params })
+export const getUsageSummary = (id, refresh = false) => http.get(`/api/concept/${id}/usage-summary`, { params: { refresh } })
 export const getConceptPanorama = () => http.get('/api/concept/panorama')
 export const recommendSimilar = (q) => http.get('/api/concept/recommend-similar', { params: { q } })
 
@@ -40,6 +42,19 @@ export const getLabelize = (id) => http.get(`/api/poetry/${id}/labelize`)
 export const getArtworkList = (params = {}) => http.get('/api/artwork/list', { params })
 export const getArtworkDetail = (id) => http.get(`/api/artwork/${id}`)
 
+// ─────────── 诗意图鉴 ───────────
+export const getAtlasPaintings = () => http.get('/api/atlas/paintings')
+export const adminAtlasList = () => admin.get('/api/atlas/admin/list')
+export const adminCreateAtlas = (payload) => admin.post('/api/atlas/admin', payload)
+export const adminUpdateAtlas = (id, payload) => admin.put(`/api/atlas/admin/${id}`, payload)
+export const adminDeleteAtlas = (id) => admin.delete(`/api/atlas/admin/${id}`)
+export const adminUploadAtlasImage = (id, file) => {
+  const fd = new FormData()
+  fd.append('file', file)
+  return admin.post(`/api/atlas/admin/${id}/image`, fd)
+}
+export const adminSaveAtlasDots = (id, dots) => admin.put(`/api/atlas/admin/${id}/dots`, { dots })
+
 // ─────────── 智能助手 ───────────
 export const agentAsk = (question) => http.post('/api/agent/ask', { question })
 export const agentCompose = (payload) => http.post('/api/agent/compose', payload)
@@ -49,7 +64,7 @@ const TOKEN_KEY = 'sxz_admin_token'
 export const getToken = () => localStorage.getItem(TOKEN_KEY) || ''
 export const setToken = (t) => localStorage.setItem(TOKEN_KEY, t)
 
-const admin = axios.create({ baseURL: '/', timeout: 30000 })
+const admin = axios.create({ baseURL: '/', timeout: 300000 })  // 批量导入可能较慢，放宽至 5 分钟
 admin.interceptors.request.use((cfg) => {
   cfg.headers['X-Admin-Token'] = getToken()
   return cfg

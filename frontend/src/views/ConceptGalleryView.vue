@@ -34,6 +34,35 @@
           {{ s }}
         </button>
       </div>
+
+      <!-- 一级情感 -->
+      <div class="flex flex-wrap items-center gap-2 pt-1">
+        <span class="text-xs text-qianhui tracking-widest mr-1">情感</span>
+        <button v-for="m in emotionMains" :key="m"
+          class="px-3 py-1 text-xs rounded-full border transition-all"
+          :class="activeEmotionMain === m ? 'text-white' : 'hover:bg-black/5'"
+          :style="activeEmotionMain === m
+            ? { background: emotionColor(m), borderColor: emotionColor(m) }
+            : { borderColor: emotionColor(m) + '55', color: emotionColor(m) }"
+          @click="toggleEmotionMain(m)">
+          {{ m }}
+        </button>
+        <button v-if="activeEmotionMain || activeEmotion"
+          class="px-3 py-1 text-xs rounded-full border border-qianhui/30 text-qianhui hover:bg-black/5 transition-all"
+          @click="activeEmotionMain = ''; activeEmotion = ''; load()">清除情感</button>
+      </div>
+      <!-- 二级情感 -->
+      <div v-if="emotionSubs.length" class="flex flex-wrap gap-1.5">
+        <button v-for="s in emotionSubs" :key="s"
+          class="px-3 py-1 text-xs rounded-full border transition-all"
+          :class="activeEmotion === s ? 'text-white' : 'hover:bg-black/5'"
+          :style="activeEmotion === s
+            ? { background: emotionColor(activeEmotionMain), borderColor: emotionColor(activeEmotionMain) }
+            : { borderColor: emotionColor(activeEmotionMain) + '44', color: emotionColor(activeEmotionMain) }"
+          @click="activeEmotion = activeEmotion === s ? '' : s; load()">
+          {{ s }}
+        </button>
+      </div>
     </div>
 
     <!-- 卡片网格 -->
@@ -42,12 +71,14 @@
     <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
       <ConceptCard v-for="(c, i) in items" :key="c.id" :concept="c" class="rise-in" :style="{ animationDelay: i * 0.06 + 's' }" />
     </div>
+    <BackToTop />
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { getConceptList } from '../api'
+import BackToTop from '../components/BackToTop.vue'
 import ConceptCard from '../components/ConceptCard.vue'
 import SectionTitle from '../components/SectionTitle.vue'
 
@@ -65,12 +96,35 @@ const keyword = ref('')
 const items = ref([])
 const loading = ref(true)
 
+// 情感筛选（一二级）
+const emotionTree = ref({})
+const activeEmotionMain = ref('')
+const activeEmotion = ref('')
+const EMOTION_COLORS = {
+  '情感心绪类': '#6E4A7E', '交往离别类': '#9B4423', '人生感悟类': '#8A6D3B',
+  '自然山水类': '#5B7C5F', '历史文化类': '#2B4C7E', '志向抱负类': '#9B2C1F',
+  '超脱境界类': '#3A7A7C',
+}
+const emotionColor = (m) => EMOTION_COLORS[m] || '#8A6D3B'
+const emotionMains = computed(() => Object.keys(emotionTree.value))
+const emotionSubs = computed(() => activeEmotionMain.value ? (emotionTree.value[activeEmotionMain.value] || []) : [])
+
+function toggleEmotionMain(m) {
+  if (activeEmotionMain.value === m) { activeEmotionMain.value = ''; activeEmotion.value = '' }
+  else { activeEmotionMain.value = m; activeEmotion.value = '' }
+  load()
+}
+
 const subCats = computed(() => activeCategory.value ? subCategories[activeCategory.value] || [] : [])
 
 async function load() {
   loading.value = true
   try {
-    const data = await getConceptList({ category: activeCategory.value, keyword: keyword.value })
+    const data = await getConceptList({
+      category: activeCategory.value, keyword: keyword.value,
+      emotion_main: activeEmotionMain.value, emotion: activeEmotion.value,
+    })
+    if (data.emotion_tree) emotionTree.value = data.emotion_tree
     // 前端按二级类目过滤
     items.value = activeSub.value
       ? data.items.filter((c) => c.category_sub === activeSub.value)

@@ -26,8 +26,16 @@
       "writing_type": "体裁：诗/词/曲/文",
       "content": "全文，换行用 \\n",
       "rels": [
-        { "clause": "含意象的诗句（须为 content 中的原文片段）", "emotion": "情感标签之一", "is_classic": 1, "weight": 3, "annotation": "（可选）逐句笺注——若提供则直接使用，跳过LLM生成" }
-      ]
+        {
+          "clause": "含意象的诗句（须为 content 中的原文片段）",
+          "emotion": "情感标签之一",
+          "is_classic": 1,
+          "weight": 3,
+          "annotation": "（可选）逐句笺注——若提供则直接使用，跳过LLM生成"
+        }
+      ],
+      "translation": "（选填）现代汉语翻译，留空由 AI 自动补全",
+      "appreciation": "（选填）文学赏析，留空由 AI 自动补全"
     },
     {
       "title": "同一意象可多首（标题+作者与库中相同会自动复用，不重复录入）",
@@ -36,23 +44,45 @@
       "writing_type": "词",
       "content": "……",
       "rels": [
-        { "clause": "……", "emotion": "情感标签之一", "is_classic": 0, "weight": 1 }
-      ]
+        {
+          "clause": "……",
+          "emotion": "情感标签之一",
+          "is_classic": 0,
+          "weight": 1
+        }
+      ],
+      "translation": "（选填）现代汉语翻译，留空由 AI 自动补全",
+      "appreciation": "（选填）文学赏析，留空由 AI 自动补全"
     }
   ],
   "couplets": [
-    { "word_a": "对仗词甲", "word_b": "对仗词乙", "verse": "例句", "source": "作者《篇目》" }
+    {
+      "word_a": "对仗词甲",
+      "word_b": "对仗词乙",
+      "verse": "例句",
+      "source": "作者《篇目》"
+    }
   ],
   "artworks": [
     {
-      "name": "画名", "artist": "作者", "dynasty": "宋", "material": "绢本设色", "size": "",
-      "subject_names": "中国绘画;山水", "description": "作品简介",
-      "relation_desc": "诗画关联阐释（这幅画与意象的关系）", "weight": 2,
+      "name": "画名",
+      "artist": "作者",
+      "dynasty": "宋",
+      "material": "绢本设色",
+      "size": "",
+      "subject_names": "中国绘画;山水",
+      "description": "作品简介",
+      "relation_desc": "诗画关联阐释（这幅画与意象的关系）",
+      "weight": 2,
       "svg_theme": "占位图主题：月/夕阳/青绿（可省略，自动判断）",
       "image_url": "（可省略，省略时自动生成水墨占位图）"
     }
   ],
   "relations": [
-    { "to": "月", "relation_type": "对仗/共现/情感同源/演变衍生", "description": "关系说明" }
+    {
+      "to": "月",
+      "relation_type": "对仗/共现/情感同源/演变衍生",
+      "description": "关系说明"
+    }
   ]
 }

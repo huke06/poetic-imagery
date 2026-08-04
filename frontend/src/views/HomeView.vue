@@ -66,6 +66,38 @@
       </div>
     </section>
 
+    <!-- 艺术品精选 -->
+    <section class="bg-white/40 border-y border-shiqing/10">
+      <div class="max-w-6xl mx-auto px-4 py-16">
+        <SectionTitle sub="诗画互证 · 前往艺术展厅">艺术品精选</SectionTitle>
+        <div v-if="artworks.length" class="grid grid-cols-2 sm:grid-cols-4 gap-5 mt-8">
+          <router-link v-for="(a, i) in artworks" :key="a.id" :to="`/artworks?id=${a.id}`"
+            class="card card-hover overflow-hidden cursor-pointer rise-in" :style="{ animationDelay: i * 0.06 + 's' }">
+            <img :src="a.thumb_url || a.image_url" :alt="a.name" class="w-full h-40 object-cover" loading="lazy" />
+            <div class="p-3">
+              <h4 class="font-song font-semibold text-sm truncate">《{{ a.name }}》</h4>
+              <p class="text-[11px] text-qianhui mt-0.5">{{ a.dynasty_period || a.dynasty_main }} · {{ a.artist }}</p>
+            </div>
+          </router-link>
+        </div>
+        <p v-else class="py-10 text-center text-qianhui text-sm">艺术品收录中…</p>
+      </div>
+    </section>
+
+    <!-- 诗意图鉴入口 -->
+    <section class="max-w-6xl mx-auto px-4 py-14">
+      <div class="card card-hover p-8 flex flex-col sm:flex-row items-center justify-between gap-5 rise-in">
+        <div class="flex items-center gap-5">
+          <span class="seal !w-14 !h-14 !text-lg shrink-0">鉴</span>
+          <div>
+            <h3 class="font-song text-xl font-bold tracking-wider">诗意图鉴 · 画中诗境</h3>
+            <p class="text-sm text-qianhui mt-1 leading-6">名画为卷，意象为点 —— 左右翻阅画卷，点击画中圆点，探寻每一处诗情。</p>
+          </div>
+        </div>
+        <router-link to="/atlas" class="btn-primary shrink-0">进入诗意图鉴</router-link>
+      </div>
+    </section>
+
     <!-- 项目简介 -->
     <section class="bg-white/40 border-y border-shiqing/10">
       <div class="max-w-6xl mx-auto px-4 py-16">
@@ -80,24 +112,25 @@
       </div>
     </section>
 
-    <!-- 智能助手入口 -->
+    <!-- AI 助手入口 -->
     <section class="max-w-6xl mx-auto px-4 py-16 text-center">
       <p class="font-kai text-2xl text-moyan/80">「月」在古诗里有哪些含义？</p>
       <p class="font-kai text-2xl text-moyan/80 mt-2">「夕阳」为何总与离愁相伴？</p>
-      <router-link to="/agent" class="btn-primary mt-8">向智能助手提问</router-link>
+      <router-link to="/agent" class="btn-primary mt-8">向灵犀助手提问</router-link>
     </section>
   </div>
 </template>
 
 <script setup>
 import { onMounted, ref } from 'vue'
-import { getConceptList } from '../api'
+import { getArtworkList, getConceptList } from '../api'
 import ConceptCard from '../components/ConceptCard.vue'
 import ParticleCanvas from '../components/ParticleCanvas.vue'
 import SectionTitle from '../components/SectionTitle.vue'
 
 const concepts = ref([])
 const allConcepts = ref([])
+const artworks = ref([])
 const loading = ref(true)
 
 const features = [
@@ -115,6 +148,11 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+  // 艺术品精选
+  try {
+    const art = await getArtworkList({ page: 1, page_size: 4 })
+    artworks.value = art.items
+  } catch { artworks.value = [] }
 })
 
 function randomConcept() {

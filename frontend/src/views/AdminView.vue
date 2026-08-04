@@ -68,6 +68,7 @@
         <ConceptPanel v-else-if="tab === 'concept'" />
         <PoetryPanel v-else-if="tab === 'poetry'" />
         <ArtworkPanel v-else-if="tab === 'artwork'" />
+        <AtlasPanel v-else-if="tab === 'atlas'" />
         <RelationPanel v-else-if="tab === 'relation'" />
         <CoupletPanel v-else-if="tab === 'couplet'" />
         <UserPanel v-else-if="tab === 'users'" />
@@ -84,6 +85,7 @@ import {
 } from '../api'
 import SectionTitle from '../components/SectionTitle.vue'
 import ArtworkPanel from '../components/admin/ArtworkPanel.vue'
+import AtlasPanel from '../components/admin/AtlasPanel.vue'
 import ConceptPanel from '../components/admin/ConceptPanel.vue'
 import ConfigPanel from '../components/admin/ConfigPanel.vue'
 import CoupletPanel from '../components/admin/CoupletPanel.vue'
@@ -99,6 +101,7 @@ const tabs = [
   { key: 'concept', label: '意象管理' },
   { key: 'poetry', label: '诗文管理' },
   { key: 'artwork', label: '古画管理' },
+  { key: 'atlas', label: '诗意图鉴' },
   { key: 'relation', label: '关联管理' },
   { key: 'couplet', label: '对仗管理' },
   { key: 'users', label: '用户管理' },

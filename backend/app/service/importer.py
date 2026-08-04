@@ -6,6 +6,11 @@
    结构同 scripts/concept_template.json（concept + poetries + couplets + artworks + relations）
 2. CSV-诗文关联（poetries）：一行一条「诗文-意象」关联，列见 sample poetries_sample.csv
 3. CSV-意象本体（concepts）：一行一个意象基础信息，列见 sample concepts_sample.csv
+4. CSV-对仗（couplets）：word_a / word_b / verse / poet / title
+5. CSV-共现（cooccurrence）：name / to / cooccurrence_type / NPMI / diaphaneity / verse / description
+   兼容共现分析结果表（word_a / word_b / same_sentence… / NPMI… / transparency…）
+6. CSV-情感标签占比统计（emotion_stats）：imagery_emotion_statistics_aggregated.csv
+7. CSV-朝代出现频次统计（dynasty_stats）：dynasty_occurrence.csv
    CSV 类型按表头自动识别，无需用户指定
 """
 import csv
@@ -17,9 +22,13 @@ from sqlalchemy.orm import Session
 
 from ..models import (
     Artwork, Concept, ConceptArtworkRel, ConceptPoetryRel, ConceptRelation,
-    Couplet, DynastyStats, Poetry,
+    Couplet, CooccurrenceStat, DynastyOccurrenceStat, DynastyStats, EmotionStat, Poetry,
 )
 from ..utils.palette import assign_color
+from ..utils.taxonomy import (
+    dominant_cooccurrence_type, dynasty_group_of, emotion_main_of,
+    normalize_artwork_dynasty, normalize_subjects, rebuild_learned_map_from_db,
+)
 
 DYNASTY_ORDER = ["先秦", "汉", "魏晋", "唐", "五代", "宋", "元", "明", "清"]
 
@@ -201,10 +210,17 @@ def import_concept_data(db: Session, data: dict, with_svg: bool = True) -> dict:
                 title=p["title"], author=p.get("author", "佚名"), dynasty=p.get("dynasty", ""),
                 writing_type=p.get("writing_type", "诗"), content=p["content"],
                 clauses=json.dumps(split_clauses(p["content"]), ensure_ascii=False),
+                translation=(p.get("translation") or "").strip(),
+                appreciation=(p.get("appreciation") or "").strip(),
             )
             db.add(poetry)
             db.flush()
             report["poetry_new"] += 1
+        # 数据包提供了人工翻译/赏析时覆盖写入（留空不动已有缓存）
+        if (p.get("translation") or "").strip():
+            poetry.translation = p["translation"].strip()
+        if (p.get("appreciation") or "").strip():
+            poetry.appreciation = p["appreciation"].strip()
         for raw in p.get("rels", []):
             r = _norm_rel(raw)
             if not r["clause"]:
@@ -214,6 +230,7 @@ def import_concept_data(db: Session, data: dict, with_svg: bool = True) -> dict:
             if dup:
                 report["rel_skipped"] += 1
                 continue
+            r["emotion_main"] = emotion_main_of(r["emotion"])
             db.add(ConceptPoetryRel(concept_id=concept.id, poetry_id=poetry.id, **r))
             report["rel_new"] += 1
 
@@ -252,11 +269,15 @@ def import_concept_data(db: Session, data: dict, with_svg: bool = True) -> dict:
             else:
                 _map_legacy_artwork(a)
                 fallback = f"/static/artworks/{next(svg_iter)}" if svg_files else ""
+                image_url = a.get("image_url") or fallback
+                # 封面图自动匹配作品图片：有真实作品图时不再使用水墨占位图
+                thumb_url = a.get("thumb_url") or image_url
                 artwork = Artwork(
                     name=a["name"], artist=a.get("artist", "佚名"), dynasty_period=a.get("dynasty_period", ""),
+                    dynasty_main=normalize_artwork_dynasty(a.get("dynasty_period", ""), a.get("dynasty", "")),
                     material=a.get("material", ""), size=a.get("size", ""),
-                    subject_names=a.get("subject_names", ""),
-                    image_url=a.get("image_url") or fallback, thumb_url=a.get("thumb_url") or fallback,
+                    subject_names=normalize_subjects(a.get("subject_names", "")),
+                    image_url=image_url, thumb_url=thumb_url,
                     description=a.get("description", ""),
                 )
                 db.add(artwork)
@@ -266,33 +287,79 @@ def import_concept_data(db: Session, data: dict, with_svg: bool = True) -> dict:
                 db.add(ConceptArtworkRel(concept_id=concept.id, artwork_id=artwork.id,
                                          relation_desc=a.get("relation_desc", ""), weight=int(a.get("weight", 1))))
 
-    # 意象-意象关联
+    # 意象-意象关联（v3：聚焦共现）
     for rel in data.get("relations", []):
         if isinstance(rel, dict):
-            to_name, rtype, desc = rel.get("to", ""), rel.get("relation_type", ""), rel.get("description", "")
+            to_name, rtype, desc = rel.get("to", ""), rel.get("relation_type", "") or "共现", rel.get("description", "")
         else:
-            to_name, rtype, desc = rel
+            to_name, rtype, desc = rel[0], rel[1] if len(rel) > 1 and rel[1] else "共现", rel[2] if len(rel) > 2 else ""
         target = db.query(Concept).filter_by(name=to_name).first()
         if not target:
             report["warnings"].append(f"关联目标意象「{to_name}」不存在，已跳过")
             continue
         if not db.query(ConceptRelation).filter_by(from_concept_id=concept.id, to_concept_id=target.id).first():
             db.add(ConceptRelation(from_concept_id=concept.id, to_concept_id=target.id,
-                                   relation_type=rtype, description=desc))
+                                   relation_type="共现", description=desc))
             report["relation_new"] += 1
 
     recompute_stats(db, concept)
-    # 自动预生成新诗的翻译与赏析（有 LLM 时）
+    # 新诗的翻译/赏析预生成：提交后台线程执行，不阻塞导入接口（LLM 逐首调用耗时较长）
     if report["poetry_new"] > 0 and with_svg:
-        try:
-            from ..api.poetry import pregenerate_for_poem
-            for p in data.get("poetries", []):
-                poetry = db.query(Poetry).filter_by(title=p["title"], author=p.get("author", "佚名")).first()
+        pending_ids = []
+        for p in data.get("poetries", []):
+            poetry = db.query(Poetry).filter_by(title=p["title"], author=p.get("author", "佚名")).first()
+            if poetry and (not poetry.translation or not poetry.appreciation):
+                pending_ids.append(poetry.id)
+        if pending_ids:
+            schedule_pregeneration(pending_ids)
+    return report
+
+
+# ═══════════════ 后台预生成（翻译/赏析） ═══════════════
+import threading
+from collections import deque
+
+_pregen_queue: deque = deque()
+_pregen_lock = threading.Lock()
+_pregen_active = False
+
+
+def schedule_pregeneration(poetry_ids: list):
+    """把诗文 id 加入后台预生成队列；worker 未运行时延迟 5 秒启动（等待事务提交）"""
+    global _pregen_active
+    with _pregen_lock:
+        _pregen_queue.extend(poetry_ids)
+        if _pregen_active:
+            return
+        _pregen_active = True
+    threading.Timer(5.0, _pregen_worker).start()
+
+
+def _pregen_worker():
+    """后台逐首生成翻译/赏析并回写缓存；队列空则退出"""
+    global _pregen_active
+    from ..database import SessionLocal
+    try:
+        from ..api.poetry import pregenerate_for_poem
+        while True:
+            with _pregen_lock:
+                if not _pregen_queue:
+                    _pregen_active = False
+                    return
+                pid = _pregen_queue.popleft()
+            db = SessionLocal()
+            try:
+                poetry = db.get(Poetry, pid)
                 if poetry and (not poetry.translation or not poetry.appreciation):
                     pregenerate_for_poem(db, poetry)
-        except Exception:
-            pass
-    return report
+                    db.commit()
+            except Exception:
+                db.rollback()
+            finally:
+                db.close()
+    except Exception:
+        with _pregen_lock:
+            _pregen_active = False
 
 
 # ═══════════════ 格式解析 ═══════════════
@@ -306,19 +373,364 @@ def parse_json(text: str) -> list[dict]:
     return [obj]
 
 
+# ═══════════════ 专项 CSV 入库（v3 新增） ═══════════════
+def _match_concept(db: Session, word: str):
+    """按名称或别名匹配意象"""
+    c = db.query(Concept).filter_by(name=word).first()
+    if c:
+        return c
+    for c in db.query(Concept).all():
+        aliases = [a.strip() for a in (c.aliases or "").split(",") if a.strip()]
+        if word in aliases:
+            return c
+    return None
+
+
+def import_couplets_csv(db: Session, rows: list[dict]) -> dict:
+    """对仗 CSV 入库：word_a 能匹配意象则关联，否则 concept_id 置空保留"""
+    report = {"inserted": 0, "skipped": 0, "linked_concepts": 0}
+    for r in rows:
+        concept = _match_concept(db, r["word_a"]) or _match_concept(db, r["word_b"])
+        dup = db.query(Couplet).filter_by(word_a=r["word_a"], word_b=r["word_b"], verse=r["verse"]).first()
+        if dup:
+            if concept and not dup.concept_id:
+                dup.concept_id = concept.id
+            report["skipped"] += 1
+            continue
+        db.add(Couplet(concept_id=concept.id if concept else None,
+                       word_a=r["word_a"], word_b=r["word_b"],
+                       verse=r["verse"], source=r["source"]))
+        report["inserted"] += 1
+        if concept:
+            report["linked_concepts"] += 1
+    return report
+
+
+def import_cooccurrence_csv(db: Session, rows: list[dict]) -> dict:
+    """共现分析 CSV 入库：更新 cooccurrence_stat，并同步到 concept_relation（两端均为库内意象时）"""
+    report = {"inserted": 0, "updated": 0, "relation_synced": 0}
+    for r in rows:
+        key = {"word_a": r["word_a"], "word_b": r["word_b"]}
+        existing = db.query(CooccurrenceStat).filter_by(**key).first()
+        if existing:
+            for f in ("cooccurrence_type", "same_sentence", "adjacent_sentence", "same_poem",
+                      "npmi", "diaphaneity", "verse", "description"):
+                if r.get(f) or f in ("npmi", "diaphaneity"):
+                    setattr(existing, f, r.get(f))
+            report["updated"] += 1
+        else:
+            db.add(CooccurrenceStat(**key, cooccurrence_type=r.get("cooccurrence_type", ""),
+                                    same_sentence=r.get("same_sentence", 0),
+                                    adjacent_sentence=r.get("adjacent_sentence", 0),
+                                    same_poem=r.get("same_poem", 0),
+                                    npmi=r.get("npmi", 0.0), diaphaneity=r.get("diaphaneity", 0.2),
+                                    verse=r.get("verse", ""), description=r.get("description", "")))
+            report["inserted"] += 1
+        # 同步到意象关联表（仅当两端都是库内意象）
+        ca, cb = _match_concept(db, r["word_a"]), _match_concept(db, r["word_b"])
+        if ca and cb and ca.id != cb.id:
+            rel = (db.query(ConceptRelation)
+                   .filter(((ConceptRelation.from_concept_id == ca.id) & (ConceptRelation.to_concept_id == cb.id))
+                           | ((ConceptRelation.from_concept_id == cb.id) & (ConceptRelation.to_concept_id == ca.id)))
+                   .first())
+            if rel:
+                rel.relation_type = "共现"
+                rel.cooccurrence_type = r.get("cooccurrence_type", "")
+                rel.same_sentence = r.get("same_sentence", 0)
+                rel.adjacent_sentence = r.get("adjacent_sentence", 0)
+                rel.same_poem = r.get("same_poem", 0)
+                rel.npmi = r.get("npmi", 0.0)
+                rel.diaphaneity = r.get("diaphaneity", 0.2)
+                if r.get("verse"):
+                    rel.verse = r["verse"]
+                if r.get("description"):
+                    rel.description = r["description"]
+            else:
+                db.add(ConceptRelation(from_concept_id=ca.id, to_concept_id=cb.id,
+                                       relation_type="共现", cooccurrence_type=r.get("cooccurrence_type", ""),
+                                       same_sentence=r.get("same_sentence", 0),
+                                       adjacent_sentence=r.get("adjacent_sentence", 0),
+                                       same_poem=r.get("same_poem", 0),
+                                       npmi=r.get("npmi", 0.0), diaphaneity=r.get("diaphaneity", 0.2),
+                                       verse=r.get("verse", ""), description=r.get("description", "")))
+            report["relation_synced"] += 1
+    return report
+
+
+def import_emotion_stats_csv(db: Session, rows: list[dict]) -> dict:
+    """情感标签占比统计 CSV 入库（按意象词全量覆盖），并回补全库一级情感标签标注"""
+    report = {"inserted": 0, "words": 0}
+    words = {r["word"] for r in rows}
+    if words:
+        db.query(EmotionStat).filter(EmotionStat.word.in_(words)).delete(synchronize_session=False)
+    for r in rows:
+        db.add(EmotionStat(word=r["word"], emotion=r["emotion"], category=r["category"],
+                           count=r["count"], ratio=r["ratio"]))
+        report["inserted"] += 1
+    report["words"] = len(words)
+    db.flush()
+    # 更新学习映射并回补一级情感标签
+    rebuild_learned_map_from_db(db)
+    ann = annotate_emotion_main(db)
+    report["annotated_rels"] = ann
+    return report
+
+
+def import_dynasty_stats_csv(db: Session, rows: list[dict]) -> dict:
+    """朝代出现频次 CSV 入库（按意象词全量覆盖）"""
+    report = {"inserted": 0, "words": 0}
+    words = {r["word"] for r in rows}
+    if words:
+        db.query(DynastyOccurrenceStat).filter(DynastyOccurrenceStat.word.in_(words)).delete(synchronize_session=False)
+    for r in rows:
+        if r["count"] <= 0:
+            continue
+        db.add(DynastyOccurrenceStat(word=r["word"], dynasty=r["dynasty"], count=r["count"]))
+        report["inserted"] += 1
+    report["words"] = len(words)
+    return report
+
+
+def import_artworks_csv(db: Session, rows: list[dict]) -> dict:
+    """艺术品 CSV 入库：按 名称+作者 去重（已有则补全空缺字段），并建立意象关联"""
+    report = {"inserted": 0, "updated": 0, "rel_new": 0, "warnings": []}
+
+    # ── 第一遍：为「新作品且无图片」生成水墨占位 SVG ──
+    need_svg = []
+    for r in rows:
+        existing = db.query(Artwork).filter_by(name=r["name"], artist=r.get("artist", "佚名")).first()
+        if not existing and not r.get("image_url"):
+            need_svg.append(r)
+    svg_files: list[str] = []
+    if need_svg:
+        import sys
+        backend_root = Path(__file__).resolve().parent.parent.parent
+        if str(backend_root) not in sys.path:
+            sys.path.insert(0, str(backend_root))
+        from scripts.svg_art import ensure_artwork_svgs
+        svg_dir = backend_root / "app" / "static" / "artworks"
+        try:
+            svg_files = ensure_artwork_svgs(need_svg, svg_dir)
+        except Exception:
+            svg_files = []
+    svg_iter = iter(svg_files)
+
+    # ── 第二遍：写入/补全 ──
+    for r in rows:
+        artist = r.get("artist", "佚名")
+        period = r.get("dynasty_period") or r.get("dynasty") or ""
+        artwork = db.query(Artwork).filter_by(name=r["name"], artist=artist).first()
+        if artwork:
+            report["updated"] += 1
+            for src, dst in (("material", "material"), ("size", "size"),
+                             ("subject_names", "subject_names"), ("description", "description")):
+                if r.get(src) and not getattr(artwork, dst):
+                    setattr(artwork, dst, normalize_subjects(r[src]) if dst == "subject_names" else r[src])
+            if period and not artwork.dynasty_period:
+                artwork.dynasty_period = period
+            if r.get("image_url") and (not artwork.image_url or artwork.image_url.endswith(".svg")):
+                artwork.image_url = r["image_url"]
+                artwork.thumb_url = r["image_url"]
+            artwork.dynasty_main = (normalize_artwork_dynasty(artwork.dynasty_period, artwork.dynasty)
+                                    or artwork.dynasty_main)
+        else:
+            image_url = r.get("image_url") or (f"/static/artworks/{next(svg_iter)}" if svg_files else "")
+            artwork = Artwork(
+                name=r["name"], artist=artist,
+                dynasty=r.get("dynasty", ""), dynasty_period=period,
+                dynasty_main=normalize_artwork_dynasty(period, r.get("dynasty", "")),
+                material=r.get("material", ""), size=r.get("size", ""),
+                subject_names=normalize_subjects(r.get("subject_names", "")),
+                image_url=image_url, thumb_url=image_url,
+                description=r.get("description", ""),
+            )
+            db.add(artwork)
+            db.flush()
+            report["inserted"] += 1
+
+        # ── 意象关联 ──
+        if r.get("concepts"):
+            for word in re_split(r["concepts"]):
+                concept = _match_concept(db, word)
+                if not concept:
+                    report["warnings"].append(f"《{r['name']}》关联意象「{word}」不在库中，已跳过")
+                    continue
+                if not db.query(ConceptArtworkRel).filter_by(concept_id=concept.id, artwork_id=artwork.id).first():
+                    db.add(ConceptArtworkRel(concept_id=concept.id, artwork_id=artwork.id,
+                                             relation_desc=r.get("relation_desc", ""), weight=2))
+                    report["rel_new"] += 1
+    return report
+
+
+def annotate_emotion_main(db: Session) -> int:
+    """为所有诗文关联回补一级情感标签（emotion_main），返回更新条数"""
+    n = 0
+    for r in db.query(ConceptPoetryRel).filter(ConceptPoetryRel.emotion != "").all():
+        main = emotion_main_of(r.emotion)
+        if main and r.emotion_main != main:
+            r.emotion_main = main
+            n += 1
+    return n
+
+
 def _unescape_newlines(s: str) -> str:
     """CSV 单元格中的字面 \\n 还原为真换行"""
     return (s or "").replace("\\n", "\n")
 
 
 def parse_csv(text: str) -> tuple[str, list[dict] | None, list[str]]:
-    """按表头自动识别 CSV 类型，返回 (类型, 意象数据包列表或本体行列表, 错误列表)
+    """按表头自动识别 CSV 类型，返回 (类型, 数据行列表, 错误列表)
 
-    类型：'poetries'（诗文关联）/ 'concepts'（意象本体）
+    类型：'poetries'（诗文关联）/ 'concepts'（意象本体）/ 'couplets'（对仗）/
+          'cooccurrence'（共现分析）/ 'emotion_stats'（情感标签占比）/ 'dynasty_stats'（朝代频次）
     """
     errors: list[str] = []
     reader = csv.DictReader(io.StringIO(text))
     headers = set(reader.fieldnames or [])
+    headers_lower = {h.lower().strip() for h in headers}
+
+    def _col(row: dict, *candidates) -> str:
+        """按候选列名（忽略大小写与全角括号后缀）取值"""
+        for key, val in row.items():
+            if key is None:
+                continue
+            kl = key.lower().strip()
+            for c in candidates:
+                if kl == c or kl.startswith(c + "（") or kl.startswith(c + "("):
+                    return (val or "").strip()
+        return ""
+
+    # ── 情感标签占比统计表（imagery_emotion_statistics_aggregated.csv） ──
+    if {"word", "emotion_names", "emotion_ratios"} <= headers:
+        rows = []
+        for i, row in enumerate(reader, start=2):
+            word = (row.get("word") or "").strip()
+            if not word:
+                continue
+            names = [x.strip() for x in (row.get("emotion_names") or "").split(";")]
+            cats = [x.strip() for x in (row.get("emotion_categories") or "").split(";")]
+            counts = [x.strip() for x in (row.get("emotion_counts") or "").split(";")]
+            ratios = [x.strip().rstrip("%") for x in (row.get("emotion_ratios") or "").split(";")]
+            for idx, name in enumerate(names):
+                if not name:
+                    continue
+                try:
+                    count = int(float(counts[idx])) if idx < len(counts) and counts[idx] else 0
+                    ratio = float(ratios[idx]) if idx < len(ratios) and ratios[idx] else 0.0
+                except ValueError:
+                    continue
+                rows.append({"word": word, "emotion": name,
+                             "category": cats[idx] if idx < len(cats) else "",
+                             "count": count, "ratio": ratio})
+        return "emotion_stats", rows, errors
+
+    # ── 朝代出现频次统计表（dynasty_occurrence.csv） ──
+    if {"word", "total_occurrence"} <= headers:
+        from ..utils.taxonomy import DYNASTY_GROUPS
+        period_cols = [h for h in (reader.fieldnames or [])
+                       if h not in ("word", "corrected_freq", "total_occurrence")]
+        rows = []
+        for i, row in enumerate(reader, start=2):
+            word = (row.get("word") or "").strip()
+            if not word:
+                continue
+            merged = {g: 0 for g in DYNASTY_GROUPS}
+            for col in period_cols:
+                group = dynasty_group_of(col)
+                if not group:
+                    continue
+                try:
+                    merged[group] += int(float((row.get(col) or "0").strip() or 0))
+                except ValueError:
+                    continue
+            for group, count in merged.items():
+                rows.append({"word": word, "dynasty": group, "count": count})
+        return "dynasty_stats", rows, errors
+
+    # ── 共现分析表：标注格式 name/to/… 或分析结果格式 word_a/word_b/NPMI… ──
+    is_cooc_annot = {"name", "to"} <= headers
+    is_cooc_result = ({"word_a", "word_b"} <= headers
+                      and any("npmi" in h or h.startswith(("same_poem", "same_sentence",
+                                                           "adjacent_sentence", "transparency"))
+                              for h in headers_lower))
+    if is_cooc_annot or is_cooc_result:
+        rows = []
+        for i, row in enumerate(reader, start=2):
+            if is_cooc_annot:
+                wa, wb = _col(row, "name"), _col(row, "to")
+                ctype = _col(row, "cooccurrence_type")
+                npmi = _col(row, "npmi")
+                dia = _col(row, "diaphaneity")
+                verse = _col(row, "verse")
+                desc = _unescape_newlines(_col(row, "description"))
+                ss = adj = sp = 0
+            else:
+                wa, wb = _col(row, "word_a"), _col(row, "word_b")
+                ctype = _col(row, "cooccurrence_type")
+                ss = int(float(_col(row, "same_sentence") or 0) or 0)
+                adj = int(float(_col(row, "adjacent_sentence") or 0) or 0)
+                sp = int(float(_col(row, "same_poem") or 0) or 0)
+                npmi = _col(row, "npmi_sent", "npmi") or _col(row, "npmi_poem")
+                dia = _col(row, "transparency", "diaphaneity")
+                verse = _col(row, "verse")
+                desc = _unescape_newlines(_col(row, "description"))
+            if not wa or not wb:
+                errors.append(f"第 {i} 行：word_a/name 与 word_b/to 不能为空")
+                continue
+            if not ctype:
+                ctype = dominant_cooccurrence_type(ss, adj, sp) if (ss or adj or sp) else "全诗"
+            try:
+                npmi_v = max(-1.0, min(1.0, float(npmi))) if npmi else 0.0
+            except ValueError:
+                npmi_v = 0.0
+            try:
+                dia_v = max(0.2, float(dia)) if dia else max(0.2, min(1.0, (npmi_v + 1) / 2))
+            except ValueError:
+                dia_v = 0.2
+            rows.append({"word_a": wa, "word_b": wb, "cooccurrence_type": ctype,
+                         "same_sentence": ss, "adjacent_sentence": adj, "same_poem": sp,
+                         "npmi": npmi_v, "diaphaneity": dia_v, "verse": verse, "description": desc})
+        return "cooccurrence", rows, errors
+
+    # ── 对仗表：word_a / word_b / verse / poet / title ──
+    if {"word_a", "word_b"} <= headers:
+        rows = []
+        for i, row in enumerate(reader, start=2):
+            wa, wb = _col(row, "word_a"), _col(row, "word_b")
+            if not wa or not wb:
+                errors.append(f"第 {i} 行：word_a 与 word_b 不能为空")
+                continue
+            verse = _col(row, "verse")
+            poet = _col(row, "poet", "author")
+            title = _col(row, "title")
+            title = title.strip("《》") if title else ""
+            source = f"{poet}《{title}》" if poet and title else (poet or title or _col(row, "source"))
+            rows.append({"word_a": wa, "word_b": wb, "verse": verse, "source": source})
+        return "couplets", rows, errors
+
+    # ── 艺术品表：name + artist/material/dynasty_period/image_url 等（不含 emotion_tags） ──
+    if ("name" in headers and "emotion_tags" not in headers
+            and ({"artist", "author", "material", "dynasty", "dynasty_period", "image_url", "size"} & headers)):
+        rows = []
+        for i, row in enumerate(reader, start=2):
+            name = _col(row, "name")
+            if not name:
+                errors.append(f"第 {i} 行：name（作品名）不能为空")
+                continue
+            rows.append({
+                "name": name,
+                "artist": _col(row, "artist", "author") or "佚名",
+                "dynasty": _col(row, "dynasty"),
+                "dynasty_period": _col(row, "dynasty_period"),
+                "material": _col(row, "material"),
+                "size": _col(row, "size"),
+                "subject_names": _col(row, "subject_names", "subjects", "subject"),
+                "image_url": _col(row, "image_url", "image", "img"),
+                "description": _unescape_newlines(_col(row, "description")),
+                "concepts": _col(row, "concepts", "concept_names", "concept"),
+                "relation_desc": _unescape_newlines(_col(row, "relation_desc")),
+            })
+        return "artworks", rows, errors
 
     if {"name", "emotion_tags"} <= headers:
         # ── 意象本体表 ──
@@ -373,7 +785,15 @@ def parse_csv(text: str) -> tuple[str, list[dict] | None, list[str]]:
                            "dynasty": (row.get("dynasty") or "").strip(),
                            "writing_type": (row.get("writing_type") or "诗").strip(),
                            "content": _unescape_newlines((row.get("content") or "").strip()),
+                           "translation": _unescape_newlines((row.get("translation") or "").strip()),
+                           "appreciation": _unescape_newlines((row.get("appreciation") or "").strip()),
                            "rels": []}
+            else:
+                # 同诗多行：后行补充翻译/赏析（前行留空时）
+                if not pm[key]["translation"] and (row.get("translation") or "").strip():
+                    pm[key]["translation"] = _unescape_newlines(row["translation"].strip())
+                if not pm[key]["appreciation"] and (row.get("appreciation") or "").strip():
+                    pm[key]["appreciation"] = _unescape_newlines(row["appreciation"].strip())
             clause = (row.get("clause") or "").strip()
             if clause:
                 pm[key]["rels"].append({
@@ -394,6 +814,17 @@ def parse_csv(text: str) -> tuple[str, list[dict] | None, list[str]]:
 
 def build_import_preview(packs: list[dict], fmt: str) -> dict:
     """dry-run 汇总"""
+    if fmt in ("csv-couplets", "csv-cooccurrence", "csv-emotion_stats", "csv-dynasty_stats", "csv-artworks"):
+        return {
+            "format": fmt,
+            "concept_count": 0,
+            "concepts": [],
+            "poetry_rows": 0,
+            "rel_rows": 0,
+            "couplet_rows": len(packs) if fmt == "csv-couplets" else 0,
+            "artwork_rows": len(packs) if fmt == "csv-artworks" else 0,
+            "row_count": len(packs),
+        }
     return {
         "format": fmt,
         "concept_count": len(packs),

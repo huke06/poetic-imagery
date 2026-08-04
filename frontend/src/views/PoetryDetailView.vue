@@ -1,5 +1,10 @@
 <template>
   <div v-if="poetry" class="max-w-3xl mx-auto px-4 py-12">
+    <!-- 返回上一页 -->
+    <button class="back-btn mb-6" @click="goBack">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
+      返回
+    </button>
     <!-- 古籍式正文 -->
     <div class="text-center rise-in">
       <h1 class="font-song text-4xl font-bold text-moyan tracking-widest">{{ poetry.title }}</h1>
@@ -61,19 +66,19 @@
             <div v-if="toolData.items?.length" class="space-y-5">
               <div v-for="(n, i) in toolData.items" :key="i" class="border-l-2 border-shiqing/40 pl-4">
                 <p class="verse-text text-lg text-shiqing whitespace-normal break-words">{{ n.clause }}</p>
-                <p class="text-sm text-qianhui leading-7 mt-1.5 whitespace-normal break-words">{{ n.note }}</p>
+                <p class="text-sm text-qianhui leading-7 mt-1.5 whitespace-pre-wrap break-words">{{ plainText(n.note) }}</p>
               </div>
             </div>
             <p v-else class="text-sm text-qianhui py-8 text-center">{{ toolData.note || '暂无笺注数据' }}</p>
           </div>
           <!-- 诗词翻译（原古籍出处） -->
           <div v-else-if="activeTool === 'translate' && toolData">
-            <div v-if="toolData.text" class="text-sm leading-8 whitespace-pre-wrap text-moyan/90">{{ toolData.text }}</div>
+            <div v-if="toolData.text" class="text-sm leading-8 whitespace-pre-wrap text-moyan/90">{{ plainText(toolData.text) }}</div>
             <p v-else class="text-sm text-qianhui py-8 text-center">{{ toolData.note || '暂无翻译' }}</p>
           </div>
           <!-- 赏析 -->
           <div v-else-if="activeTool === 'appreciation' && toolData">
-            <div v-if="toolData.text" class="text-sm leading-8 whitespace-pre-wrap text-moyan/90">{{ toolData.text }}</div>
+            <div v-if="toolData.text" class="text-sm leading-8 whitespace-pre-wrap text-moyan/90">{{ plainText(toolData.text) }}</div>
             <p v-else class="text-sm text-qianhui py-8 text-center">{{ toolData.note || '暂无赏析' }}</p>
           </div>
         </template>
@@ -83,6 +88,7 @@
     <div class="text-center mt-10">
       <button class="btn-outline !text-xs" @click="goBack">返回上一页</button>
     </div>
+    <BackToTop />
   </div>
   <div v-else class="py-32 text-center text-qianhui">加载中…</div>
 </template>
@@ -91,6 +97,7 @@
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getAppreciation, getLabelize, getPoetryDetail, getSimilar, getTones, getTranslate } from '../api'
+import BackToTop from '../components/BackToTop.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -173,6 +180,24 @@ async function switchTool(key) {
 function goBack() {
   if (window.history.state?.back) router.back()
   else router.push('/')
+}
+
+/** 去除 Markdown 语法，输出纯文本（翻译/赏析/笺注统一纯文本展示） */
+function plainText(t) {
+  if (!t) return ''
+  return String(t)
+    .replace(/```[\s\S]*?```/g, (m) => m.replace(/```/g, ''))
+    .replace(/^#{1,6}\s*/gm, '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+[.、)]\s+/gm, '')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 onMounted(async () => {

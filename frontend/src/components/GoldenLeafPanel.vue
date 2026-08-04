@@ -3,11 +3,11 @@
   宣纸底 + 金叶 + 脉络连线 · rAF 渲染无抖动
 -->
 <template>
-  <div class="leaf-root">
+  <div class="leaf-root" :style="{ bottom: bottom + 'px' }">
     <!-- Collapsed -->
     <Transition name="swap">
       <button v-if="!open" class="leaf-collapsed" :class="{ 'leaf-pulse': pulse }"
-        @click="doOpen" title="金叶集">
+        @pointerdown="onPointerDown" @click="onBtnClick" title="金叶集（可拖拽移动）">
         <svg width="42" height="46" viewBox="0 0 44 52">
           <path d="M22 3 C9 3 1 13 1 25 C1 30 3 35 8 39 L22 52 L36 39 C41 35 43 30 43 25 C43 13 35 3 22 3Z"
             fill="#C89838" stroke="#8B6910" stroke-width="0.9"/>
@@ -20,14 +20,14 @@
     <!-- Expanded -->
     <Transition name="panel">
       <div v-if="open" class="leaf-card">
-        <div class="leaf-head">
+        <div class="leaf-head" @pointerdown="onPointerDown" title="拖拽移动">
           <span class="font-kai text-sm font-bold tracking-wider text-moyan/80">
             金叶集 · 已探 <b class="text-zheshi">{{ list.length }}</b> 象
           </span>
           <div class="flex items-center gap-1">
-            <button class="leaf-btn" @click.stop="zoomIn">+</button>
-            <button class="leaf-btn" @click.stop="zoomOut">−</button>
-            <button class="leaf-btn" @click.stop="open = false">─</button>
+            <button class="leaf-btn no-drag" @click.stop="zoomIn">+</button>
+            <button class="leaf-btn no-drag" @click.stop="zoomOut">−</button>
+            <button class="leaf-btn no-drag" @click.stop="open = false">─</button>
           </div>
         </div>
 
@@ -63,11 +63,17 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useExploredImageries } from '../composables/useExploredImageries'
+import { useSideDrag } from '../composables/useSideDrag'
 
 const { exploredList: list, newCount, achievements, themeProgress, consumeNew } = useExploredImageries()
 const router = useRouter()
 
 const open = ref(false)
+// 展开面板高约 460，收紧上限避免顶部溢出
+const { bottom, onPointerDown, wasDragged, reclamp } = useSideDrag(
+  'sxz_leaf_float_pos', 20, () => (window.innerHeight || 800) - (open.value ? 480 : 70))
+watch(open, reclamp)
+
 const pulse = ref(false)
 const cvs = ref(null)
 const hover = ref(null)
@@ -269,6 +275,9 @@ function zoomOut() { zoom = Math.max(0.45, zoom / 1.2); dirty = true }
 /* ─────────── Panel ─────────── */
 function doOpen() { open.value = true; pulse.value = false; consumeNew(); tx = 0; ty = 0; zoom = 1; dirty = true }
 
+// 区分点击与拖拽：拖拽后不触发打开
+function onBtnClick() { if (!wasDragged()) doOpen() }
+
 watch(newCount, (v) => {
   if (v > 0 && !open.value) {
     pulse.value = true; open.value = true; consumeNew(); tx = 0; ty = 0; zoom = 1; dirty = true
@@ -289,15 +298,17 @@ onBeforeUnmount(() => cancelAnimationFrame(rid))
 </script>
 
 <style scoped>
-.leaf-root { position: fixed; left: 20px; bottom: 20px; z-index: 80; }
+.leaf-root { position: fixed; left: 20px; z-index: 80; }
 .leaf-collapsed {
   position: relative; width: 52px; height: 52px;
   display: flex; align-items: center; justify-content: center;
   background: rgba(245,241,232,0.88); backdrop-filter: blur(10px);
   border: 1px solid rgba(180,150,100,0.3); border-radius: 14px;
-  box-shadow: 0 2px 16px rgba(100,70,20,0.1); cursor: pointer; transition: all .3s;
+  box-shadow: 0 2px 16px rgba(100,70,20,0.1); cursor: grab; transition: box-shadow .3s, background .3s;
+  user-select: none; touch-action: none;
 }
-.leaf-collapsed:hover { background: rgba(245,241,232,0.97); box-shadow: 0 6px 24px rgba(100,70,20,0.18); transform: translateY(-3px); }
+.leaf-collapsed:active { cursor: grabbing; }
+.leaf-collapsed:hover { background: rgba(245,241,232,0.97); box-shadow: 0 6px 24px rgba(100,70,20,0.18); }
 .leaf-pulse { animation: lp .5s ease-in-out 3; }
 @keyframes lp { 0%,100%{box-shadow:0 2px 16px rgba(100,70,20,.1)} 50%{box-shadow:0 2px 28px rgba(200,152,56,.5)} }
 .leaf-badge {
@@ -315,7 +326,9 @@ onBeforeUnmount(() => cancelAnimationFrame(rid))
 .leaf-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 16px 8px; border-bottom: 1px solid rgba(160,135,100,0.15);
+  cursor: grab; user-select: none; touch-action: none;
 }
+.leaf-head:active { cursor: grabbing; }
 .leaf-btn {
   font-size: 15px; color: #9A8B70; cursor: pointer; width: 26px; height: 26px;
   display: flex; align-items: center; justify-content: center;

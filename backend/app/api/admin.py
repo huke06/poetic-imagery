@@ -32,6 +32,8 @@ JSON_TEMPLATE_FALLBACK = json.dumps({
                 "description": "演变史"},
     "poetries": [{"title": "篇目名", "author": "作者", "dynasty": "唐", "writing_type": "诗",
                   "content": "全文，换行用 \n",
+                  "translation": "（选填）现代汉语翻译，留空由 AI 自动补全",
+                  "appreciation": "（选填）文学赏析，留空由 AI 自动补全",
                   "rels": [{"clause": "含意象的诗句", "emotion": "情感标签之一", "is_classic": 1, "weight": 3}]}],
     "couplets": [{"word_a": "对仗词甲", "word_b": "对仗词乙", "verse": "例句", "source": "作者《篇目》"}],
     "artworks": [{"name": "画名", "artist": "作者", "dynasty": "宋", "material": "绢本设色", "size": "",
@@ -39,12 +41,24 @@ JSON_TEMPLATE_FALLBACK = json.dumps({
     "relations": [{"to": "月", "relation_type": "共现", "description": "关系说明"}],
 }, ensure_ascii=False, indent=2)
 
-CSV_POETRIES_FALLBACK = """concept_name,concept_category,concept_tags,title,author,dynasty,writing_type,content,clause,emotion,is_classic,weight
-雁,动物,思乡 离别 孤寂 时光流逝,次北固山下,王湾,唐,诗,"客路青山外，行舟绿水前。\n潮平两岸阔，风正一帆悬。\n海日生残夜，江春入旧年。\n乡书何处达？归雁洛阳边。",乡书何处达？归雁洛阳边,思乡,1,3
+CSV_POETRIES_FALLBACK = """concept_name,concept_category,concept_tags,title,author,dynasty,writing_type,content,clause,emotion,is_classic,weight,translation,appreciation
+雁,动物,思乡 离别 孤寂 时光流逝,次北固山下,王湾,唐,诗,"客路青山外，行舟绿水前。\n潮平两岸阔，风正一帆悬。\n海日生残夜，江春入旧年。\n乡书何处达？归雁洛阳边。",乡书何处达？归雁洛阳边,思乡,1,3,"旅客路过青山之外，行舟在绿水之前……","首联点题，写羁旅之行……（可留空，留空时由 AI 自动生成）"
 """
 
 CSV_CONCEPTS_FALLBACK = """name,category,aliases,emotion_tags,origin_dynasty,peak_dynasty,theme_color,original_meaning,poetic_meaning,description
 雁,动物,"大雁,鸿雁,归雁,孤雁",思乡 离别 孤寂 时光流逝,先秦,唐宋,,"候鸟，秋来南去，春来北归。","雁的迁徙与书信传说使其成为思乡与离别的经典意象。","雁意象起于《诗经》……"
+"""
+
+CSV_COUPLETS_FALLBACK = """word_a,word_b,verse,poet,title
+月,霜,床前明月光，疑是地上霜,李白,《静夜思》
+"""
+
+CSV_COOCCURRENCE_FALLBACK = """name,to,cooccurrence_type,NPMI,diaphaneity,verse,description
+月,霜,句内,0.65,0.8,床前明月光，疑是地上霜,月色如霜，清冷之景常相映衬
+"""
+
+CSV_ARTWORKS_FALLBACK = """name,artist,dynasty_period,material,size,subject_names,image_url,description,concepts,relation_desc
+对月图,马远,宋代·南宋,绢本设色,23.5x24.6cm,中国绘画;山水,,月下独酌，水天一色，意境空灵,月,画中孤月高悬，与诗词「明月出天山」之境相通
 """
 
 
@@ -256,6 +270,7 @@ def _artwork_full(a: Artwork, db: Session) -> dict:
              "concept_name": (db.get(Concept, r.concept_id) or Concept(name="?")).name}
             for r in db.query(ConceptArtworkRel).filter_by(artwork_id=a.id).all()]
     return {"id": a.id, "name": a.name, "artist": a.artist, "dynasty": a.dynasty,
+            "dynasty_main": a.dynasty_main,
             "material": a.material, "size": a.size, "subject_names": a.subject_names,
             "description": a.description, "image_url": a.image_url, "thumb_url": a.thumb_url,
             "source_work_id": a.source_work_id, "rels": rels}
@@ -275,9 +290,11 @@ def admin_artwork_list(keyword: str = "", page: int = Query(1, ge=1), page_size:
 
 @router.post("/artwork", dependencies=[Depends(check_token)])
 def create_artwork(req: ArtworkUpsert, db: Session = Depends(get_db)):
+    from ..utils.taxonomy import normalize_artwork_dynasty
     obj = Artwork(name=req.name, artist=req.artist, dynasty=req.dynasty, material=req.material,
                   size=req.size, subject_names=req.subject_names, description=req.description,
-                  image_url=req.image_url, thumb_url=req.image_url, source_work_id=req.source_work_id)
+                  image_url=req.image_url, thumb_url=req.image_url, source_work_id=req.source_work_id,
+                  dynasty_main=normalize_artwork_dynasty("", req.dynasty))
     db.add(obj)
     db.flush()
     for cid in req.concept_ids:
@@ -288,12 +305,14 @@ def create_artwork(req: ArtworkUpsert, db: Session = Depends(get_db)):
 
 @router.put("/artwork/{artwork_id}", dependencies=[Depends(check_token)])
 def update_artwork(artwork_id: int, req: ArtworkUpsert, db: Session = Depends(get_db)):
+    from ..utils.taxonomy import normalize_artwork_dynasty
     obj = db.get(Artwork, artwork_id)
     if not obj:
-        raise HTTPException(404, "古画不存在")
+        raise HTTPException(404, "艺术品不存在")
     obj.name, obj.artist, obj.dynasty = req.name, req.artist, req.dynasty
     obj.material, obj.size, obj.subject_names = req.material, req.size, req.subject_names
     obj.description, obj.source_work_id = req.description, req.source_work_id
+    obj.dynasty_main = normalize_artwork_dynasty(getattr(obj, "dynasty_period", ""), req.dynasty)
     if req.image_url:
         obj.image_url = req.image_url
         obj.thumb_url = req.image_url
@@ -406,7 +425,9 @@ def delete_couplet(couplet_id: int, db: Session = Depends(get_db)):
 # ═══════════ 意象关联 CRUD 与自动推导 ═══════════
 @router.post("/relation", dependencies=[Depends(check_token)])
 def create_relation(req: RelationUpsert, db: Session = Depends(get_db)):
-    obj = ConceptRelation(**req.model_dump())
+    payload = req.model_dump()
+    payload["relation_type"] = "共现"  # v3：关联类型聚焦共现分析
+    obj = ConceptRelation(**payload)
     db.add(obj)
     db.commit()
     return ApiResp(data={"id": obj.id})
@@ -462,6 +483,9 @@ def relation_suggestions(db: Session = Depends(get_db)):
 
 
 # ═══════════ 批量导入（JSON/CSV 文件上传） ═══════════
+PACK_FREE_FORMATS = {"csv-couplets", "csv-cooccurrence", "csv-emotion_stats", "csv-dynasty_stats", "csv-artworks"}
+
+
 def _parse_one(filename: str, text: str):
     """解析单个文件 → (fmt, packs, errors, warns)"""
     from ..service import importer
@@ -480,10 +504,11 @@ def _parse_one(filename: str, text: str):
         fmt = f"csv-{fmt0}"
     else:
         raise HTTPException(400, f"{filename}：仅支持 .json 或 .csv 文件")
-    for pack in packs:
-        e, w = importer.validate(pack)
-        errors += [f"[{filename}] {x}" for x in e]
-        warns += [f"[{filename}] {x}" for x in w]
+    if fmt not in PACK_FREE_FORMATS:
+        for pack in packs:
+            e, w = importer.validate(pack)
+            errors += [f"[{filename}] {x}" for x in e]
+            warns += [f"[{filename}] {x}" for x in w]
     return fmt, packs, errors, warns
 
 
@@ -493,8 +518,7 @@ async def import_file(files: list[UploadFile], dry_run: bool = Query(False), db:
 
     - dry_run=true 时只校验与预览，不落库
     - JSON：单意象对象 / {"concepts": [...]} / 顶层数组（结构同 concept_template.json）
-    - CSV：按表头自动识别「诗文关联表」或「意象本体表」
-    - 多文件按上传顺序依次导入：本体表补充骨架信息，诗文表补充关联，JSON 补充对仗/古画/关联
+    - CSV：按表头自动识别「诗文关联表 / 意象本体表 / 对仗表 / 共现分析表 / 情感统计表 / 朝代频次表」
     """
     from ..service import importer
 
@@ -515,8 +539,10 @@ async def import_file(files: list[UploadFile], dry_run: bool = Query(False), db:
         all_packs.append((fmt, packs))
         previews.append(importer.build_import_preview(packs, fmt))
 
-    # 结合库状态的校验（新意象必须有情感标签；补充包可省略）
-    for _, packs in all_packs:
+    # 结合库状态的校验（新意象必须有情感标签；补充包可省略；专项 CSV 不参与意象校验）
+    for fmt, packs in all_packs:
+        if fmt in PACK_FREE_FORMATS:
+            continue
         for pack in packs:
             errors += importer.validate_against_db(db, pack)
 
@@ -528,6 +554,8 @@ async def import_file(files: list[UploadFile], dry_run: bool = Query(False), db:
         "rel_rows": sum(p["rel_rows"] for p in previews),
         "couplet_rows": sum(p["couplet_rows"] for p in previews),
         "artwork_rows": sum(p["artwork_rows"] for p in previews),
+        "special_rows": {p["format"]: p.get("row_count", 0) for p in previews
+                         if p["format"] in PACK_FREE_FORMATS},
         "formats": [p["format"] for p in previews],
     }
     if errors:
@@ -539,19 +567,31 @@ async def import_file(files: list[UploadFile], dry_run: bool = Query(False), db:
 
     reports = []
     try:
-        for _, packs in all_packs:
-            for pack in packs:
-                reports.append(importer.import_concept_data(db, pack))
+        for fmt, packs in all_packs:
+            if fmt == "csv-couplets":
+                reports.append({"type": "couplets", **importer.import_couplets_csv(db, packs)})
+            elif fmt == "csv-cooccurrence":
+                reports.append({"type": "cooccurrence", **importer.import_cooccurrence_csv(db, packs)})
+            elif fmt == "csv-emotion_stats":
+                reports.append({"type": "emotion_stats", **importer.import_emotion_stats_csv(db, packs)})
+            elif fmt == "csv-dynasty_stats":
+                reports.append({"type": "dynasty_stats", **importer.import_dynasty_stats_csv(db, packs)})
+            elif fmt == "csv-artworks":
+                reports.append({"type": "artworks", **importer.import_artworks_csv(db, packs)})
+            else:
+                for pack in packs:
+                    reports.append(importer.import_concept_data(db, pack))
         db.commit()
     except Exception as e:
         db.rollback()
         raise HTTPException(500, f"导入失败，已回滚：{e}")
-    return ApiResp(msg=f"导入完成：{len(reports)} 个意象数据包",
+    return ApiResp(msg=f"导入完成：{len(reports)} 批数据",
                    data={"preview": preview, "errors": [], "warnings": warns, "reports": reports})
 
 
 @router.get("/import/template")
-def import_template(format: str = Query("json", pattern="^(json|csv_poetries|csv_concepts)$")):
+def import_template(format: str = Query(
+        "json", pattern="^(json|csv_poetries|csv_concepts|csv_couplets|csv_cooccurrence|csv_artworks)$")):
     """下载统一导入模板（文件存放于项目根目录 templates/，可直接编辑后上传）"""
     from fastapi.responses import PlainTextResponse
 
@@ -559,6 +599,9 @@ def import_template(format: str = Query("json", pattern="^(json|csv_poetries|csv
         "json": ("concept_template.json", JSON_TEMPLATE_FALLBACK),
         "csv_poetries": ("poetries_template.csv", CSV_POETRIES_FALLBACK),
         "csv_concepts": ("concepts_template.csv", CSV_CONCEPTS_FALLBACK),
+        "csv_couplets": ("couplets_template.csv", CSV_COUPLETS_FALLBACK),
+        "csv_cooccurrence": ("cooccurrence_template.csv", CSV_COOCCURRENCE_FALLBACK),
+        "csv_artworks": ("artworks_template.csv", CSV_ARTWORKS_FALLBACK),
     }
     fname, fallback = files[format]
     tpl_path = Path(__file__).resolve().parent.parent.parent.parent / "templates" / fname
