@@ -16,6 +16,7 @@
             <span v-if="c.emotion_tags" class="text-xs text-qianhui">{{ Array.isArray(c.emotion_tags) ? c.emotion_tags.join(',') : c.emotion_tags }}</span>
           </div>
         </div>
+        <button class="btn-outline !py-1 !px-2 !text-xs" :class="c.is_featured ? '!border-amber-500 !text-amber-600' : '!text-qianhui/50'" :title="c.is_featured ? '取消精选' : '设为精选'" @click="toggleFeatured(c)">{{ c.is_featured ? '★' : '☆' }}</button>
         <button class="btn-outline !py-1 !px-3 !text-xs" @click="openEdit(c)">编辑</button>
         <button class="btn-outline !py-1 !px-3 !text-xs !border-zhusha/50 !text-zhusha hover:!bg-zhusha" @click="remove(c)">删除</button>
       </div>
@@ -67,7 +68,8 @@
 
 <script setup>
 import { onMounted, ref } from 'vue'
-import { adminCreateConcept, adminDeleteConcept, adminUpdateConcept, getConceptList, getConceptDetail, getPalette } from '../../api'
+import { adminCreateConcept, adminDeleteConcept, adminUpdateConcept, getConceptList, getConceptDetail, getPalette, getToken } from '../../api'
+import axios from 'axios'
 import Modal from './Modal.vue'
 
 const mainCategories = ['自然类','社会生活类','人类自身类','人造物类','虚拟类']
@@ -137,6 +139,14 @@ async function save() {
   else await adminCreateConcept(payload)
   editing.value = null
   await load()
+}
+
+async function toggleFeatured(c) {
+  const newVal = !c.is_featured
+  await axios.post(`/api/admin/concept/${c.id}/feature?featured=${newVal}`, null, {
+    headers: { 'X-Admin-Token': getToken() },
+  })
+  c.is_featured = newVal
 }
 
 async function remove(c) {

@@ -24,6 +24,7 @@ class ConceptBrief(BaseModel):
     category_sub: str
     emotion_tags: list[str]
     theme_color: str
+    is_featured: bool = False
     classic_clause: Optional[str] = None
     artwork_thumb: Optional[str] = None
     poetry_count: int = 0

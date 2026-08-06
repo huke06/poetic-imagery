@@ -1,6 +1,8 @@
 <template>
   <Teleport to="body">
+    <Transition name="fade">
     <div v-if="show" class="fixed inset-0 z-[70] flex flex-col" style="background: rgba(20,26,38,0.95)">
+
       <!-- 顶栏 -->
       <div class="flex items-center justify-between px-6 py-4 text-xuanzhi">
         <div class="flex items-center gap-3">
@@ -65,8 +67,14 @@
         </div>
       </div>
     </div>
+    </Transition>
   </Teleport>
 </template>
+
+<style scoped>
+.fade-enter-active, .fade-leave-active { transition: opacity 0.35s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+</style>
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'

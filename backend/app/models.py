@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -25,6 +25,7 @@ class Concept(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     aliases: Mapped[str] = mapped_column(String(255), default="")
     theme_color: Mapped[str] = mapped_column(String(16), default="#2B4C7E")
+    is_featured: Mapped[bool] = mapped_column(Boolean, default=False)  # 首页精选推荐
     usage_summary: Mapped[str] = mapped_column(Text, default="")  # 缓存的 AI 用法谱系总结
     create_time: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     update_time: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
@@ -67,6 +68,8 @@ class ConceptPoetryRel(Base):
     weight: Mapped[int] = mapped_column(Integer, default=1)
     is_classic: Mapped[int] = mapped_column(Integer, default=0)
     annotation: Mapped[str] = mapped_column(Text, default="")  # 缓存的逐句笺注
+    role_in_poem: Mapped[str] = mapped_column(String(16), default="")  # LLM推断的意象角色
+    usage_keywords: Mapped[str] = mapped_column(String(128), default="")  # LLM提取的用法关键词(逗号分隔)
 
     concept: Mapped[Concept] = relationship(back_populates="poetry_rels")
     poetry: Mapped[Poetry] = relationship(back_populates="concept_rels")
@@ -102,6 +105,7 @@ class ConceptArtworkRel(Base):
     artwork_id: Mapped[int] = mapped_column(ForeignKey("artwork.id", ondelete="CASCADE"), index=True)
     relation_desc: Mapped[str] = mapped_column(String(255), default="")
     weight: Mapped[int] = mapped_column(Integer, default=1)
+    is_featured: Mapped[bool] = mapped_column(Boolean, default=False)  # 首页艺术品精选
 
     concept: Mapped[Concept] = relationship(back_populates="artwork_rels")
     artwork: Mapped[Artwork] = relationship(back_populates="concept_rels")

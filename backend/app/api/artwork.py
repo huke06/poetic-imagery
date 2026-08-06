@@ -13,13 +13,17 @@ router = APIRouter(prefix="/api/artwork", tags=["艺术品"])
 
 @router.get("/list")
 def artwork_list(
-    dynasty: str = Query("", description="主朝代筛选（先秦/秦汉/魏晋南北朝/隋唐/五代十国/宋/元/明/清）"),
+    dynasty: str = Query("", description="主朝代筛选"),
     subject: str = Query("", description="主题筛选"),
     keyword: str = Query("", description="名称/作者关键词"),
+    featured: bool = Query(False, description="仅返回精选艺术品"),
     page: int = Query(1, ge=1), page_size: int = Query(12, ge=1, le=50),
     db: Session = Depends(get_db),
 ):
     q = db.query(Artwork)
+    if featured:
+        q = q.join(ConceptArtworkRel, ConceptArtworkRel.artwork_id == Artwork.id)\
+             .filter(ConceptArtworkRel.is_featured == True).distinct()
     if dynasty:
         q = q.filter(Artwork.dynasty_main == dynasty)
     if subject:

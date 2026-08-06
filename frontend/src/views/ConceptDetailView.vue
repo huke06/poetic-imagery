@@ -126,16 +126,34 @@
           <p v-else class="text-sm text-qianhui/70 py-8 text-center">对仗词组待补充（可在管理后台导入 CSV）</p>
         </div>
         <!-- 共现知识图谱（缩略） -->
-        <div class="card p-5 flex flex-col">
-          <div class="flex items-center justify-between mb-2">
-            <h3 class="text-sm text-qianhui tracking-widest">共现知识图谱</h3>
-            <button v-if="cooc.edges?.length" class="btn-primary !py-1 !px-4 !text-xs" @click="showExplorer = true">
-              探索 <span class="ml-0.5">⤢</span>
-            </button>
+        <div class="card p-5 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-sm text-qianhui tracking-widest">共现知识图谱</h3>
+              <button v-if="cooc.edges?.length" class="btn-primary !py-1 !px-4 !text-xs transition-all duration-300 hover:scale-105 hover:shadow-lg" @click="showExplorer = true">
+                探索 <span class="ml-0.5">⤢</span>
+              </button>
+            </div>
+            <VChart v-if="coocOption" :option="coocOption" height="300px" @click="onCoocClick" />
+            <p v-else class="text-sm text-qianhui/70 py-8 text-center">暂无共现分析数据</p>
           </div>
-          <VChart v-if="coocOption" :option="coocOption" height="330px" @click="onCoocClick" />
-          <p v-else class="text-sm text-qianhui/70 py-16 text-center">暂无共现分析数据</p>
-          <p v-if="cooc.edges?.length" class="text-[10px] text-qianhui/70 mt-1">线粗=NPMI · 实线句内/虚线跨句/点线全诗 · 透明度=强度 · 点击节点跳转</p>
+          <div v-if="cooc.edges?.length" class="flex gap-3 text-[10px] text-qianhui/70 border-t border-black/5 pt-2">
+            <div class="flex items-center gap-1.5 bg-white/80 rounded px-2 py-1">
+              <span class="inline-block w-8 h-0.5 rounded" style="background:#2B4C7E;height:3px"></span>
+              <span>强</span>
+              <span class="inline-block w-8 rounded" style="background:#2B4C7E;height:1px"></span>
+              <span>弱</span>
+              <span class="ml-1">NPMI</span>
+            </div>
+            <div class="flex items-center gap-1.5 bg-white/80 rounded px-2 py-1">
+              <span class="inline-block w-5 border-t border-[#2B4C7E]" style="border-style:solid"></span>
+              <span>句内</span>
+              <span class="inline-block w-5 border-t border-[#2B4C7E]" style="border-style:dashed"></span>
+              <span>跨句</span>
+              <span class="inline-block w-5 border-t border-[#2B4C7E]" style="border-style:dotted"></span>
+              <span>全诗</span>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -170,8 +188,8 @@
           <WordCloud :words="emotionCloudWords" :height="240" />
         </div>
         <div class="card p-5">
-          <h3 class="text-sm text-qianhui tracking-widest mb-2">意象用法词云</h3>
-          <WordCloud :words="usageCloudWords" :height="240" />
+          <h3 class="text-sm text-qianhui tracking-widest mb-2">意象用法画像</h3>
+          <VChart :option="usageRadarOption" height="260px" />
         </div>
       </div>
 
@@ -441,7 +459,7 @@ const particleMode = computed(() => {
   return 'ink'
 })
 
-const dynastyList = computed(() => (detail.value?.dynasty_stats || []).map((s) => s.dynasty))
+const dynastyList = computed(() => (detail.value?.poetry_dynasties || []))
 
 // ═══ 情感分布环形饼图 ═══
 const emotionOption = computed(() => {
@@ -462,7 +480,7 @@ const emotionOption = computed(() => {
   return {
     tooltip: {
       trigger: 'item',
-      formatter: (p) => `${p.data.name}（${p.data.category}）<br/>占比 ${p.data.ratio}% · ${p.data.count} 次`,
+      formatter: (p) => `${p.data.name}（${p.data.category}）<br/>占比 ${p.data.ratio}%`,
     },
     legend: { bottom: 0, data: cats, textStyle: { color: '#6B6B6B', fontSize: 11 }, itemWidth: 12, itemGap: 8 },
     series: [{
@@ -481,19 +499,25 @@ const emotionOption = computed(() => {
 // ═══ 演变脉络折线图（朝代出现频次） ═══
 const dynastyOption = computed(() => {
   const stats = detail.value?.dynasty_occurrence || []
+  if (!stats.length) return {}
   const color = detail.value?.theme_color || '#2B4C7E'
   return {
     grid: { left: 56, right: 20, top: 30, bottom: 40 },
-    tooltip: { trigger: 'axis', formatter: '{b}：{c} 次出现' },
+    tooltip: { trigger: 'axis', formatter: (p) => `${p[0].name}<br/>出现 ${p[0].value.toLocaleString()} 次` },
     xAxis: {
       type: 'category', data: stats.map((s) => s.dynasty),
       axisLine: { lineStyle: { color: '#00000022' } },
       axisLabel: { color: '#6B6B6B', fontFamily: 'Kaiti SC, KaiTi, serif', fontSize: 13 },
     },
-    yAxis: { type: 'value', splitLine: { lineStyle: { color: '#0000000D' } }, axisLabel: { color: '#9A9A9A' } },
+    yAxis: {
+      type: 'log',
+      min: 1,
+      splitLine: { lineStyle: { color: '#0000000D' } },
+      axisLabel: { color: '#9A9A9A', formatter: (v) => v >= 10000 ? `${(v/10000).toFixed(0)}万` : v >= 1000 ? `${(v/1000).toFixed(0)}千` : v },
+    },
     series: [{
       type: 'line', smooth: true, symbol: 'circle', symbolSize: 9,
-      data: stats.map((s) => s.count),
+      data: stats.map((s) => Math.max(s.count, 1)),
       lineStyle: { width: 2.5, color },
       itemStyle: { color, borderColor: '#F5F1E8', borderWidth: 2 },
       areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
@@ -513,13 +537,13 @@ const coocOption = computed(() => {
         ? `${p.data.name} · NPMI ${p.data.npmi.toFixed(2)} · ${p.data.ctype}` : p.data.name,
     },
     series: [{
-      type: 'graph', layout: 'force', roam: false,
-      force: { repulsion: 320, edgeLength: 110, gravity: 0.12 },
-      label: { show: true, fontSize: 14, fontFamily: 'Kaiti SC, KaiTi, serif', color: '#F5F1E8' },
+      type: 'graph', layout: 'force', roam: 'scale', draggable: true,
+      force: { repulsion: 280, edgeLength: 100, gravity: 0.25 },
+      label: { show: true, fontSize: 13, fontFamily: 'Kaiti SC, KaiTi, serif', color: '#F5F1E8' },
       data: cooc.value.nodes.map((n) => ({
         id: n.id, name: n.name, concept_id: n.concept_id,
-        symbolSize: n.center ? 74 : 46,
-        itemStyle: { color: n.center ? color : (n.theme_color || '#8A6D3B'), borderColor: '#F5F1E8', borderWidth: 2, shadowBlur: 8, shadowColor: '#0003' },
+        symbolSize: n.center ? 68 : 44,
+        itemStyle: { color: n.center ? color : (n.theme_color || '#8A6D3B'), borderColor: '#F5F1E8', borderWidth: 2, shadowBlur: 6, shadowColor: '#0003' },
       })),
       links: cooc.value.edges.map((e) => ({
         source: e.source, target: e.target, name: e.name, npmi: e.npmi, ctype: e.type, concept_id: e.concept_id,
@@ -543,13 +567,49 @@ const emotionCloudWords = computed(() => {
   if (stats.length) return stats.map((s) => ({ text: s.emotion, value: s.count, color: emotionMainColor(s.category) }))
   return (detail.value?.emotion_stats || []).map((s) => ({ text: s.emotion, value: s.count }))
 })
-const usageCloudWords = computed(() => {
+// ═══ 意象用法雷达图 ═══
+const ROLE_ORDER = ["起兴", "比喻", "拟人", "用典", "对偶", "烘托", "象征"]
+const usageRadarOption = computed(() => {
   const acc = {}
   for (const s of spectrum.value) {
-    s.emotion_function.split('、').forEach((e) => { if (e && e !== '待标注') acc[e] = (acc[e] || 0) + s.verse_count })
-    if (s.role_in_poem) acc[s.role_in_poem] = (acc[s.role_in_poem] || 0) + 1
+    const scores = (s.usage_scores && typeof s.usage_scores === 'object') ? s.usage_scores : null
+    if (scores) {
+      ROLE_ORDER.forEach(r => { acc[r] = (acc[r] || 0) + (scores[r] || 0) })
+    } else if (s.role_in_poem) {
+      acc[s.role_in_poem] = (acc[s.role_in_poem] || 0) + 2
+    }
   }
-  return Object.entries(acc).map(([text, value]) => ({ text, value }))
+  // 平方根压缩数值差距
+  const values = ROLE_ORDER.map(r => Math.round(Math.sqrt((acc[r] || 0) + 1) * 10) / 10)
+  const sumVal = values.reduce((a, b) => a + b, 0)
+  if (sumVal === 0) return {}  // 无数据时不渲染
+  const maxVal = Math.max(...values, 1)
+  const color = detail.value?.theme_color || '#2B4C7E'
+  return {
+    tooltip: { show: false },
+    legend: { show: false },
+    radar: {
+      center: ['50%', '52%'],
+      radius: '65%',
+      indicator: ROLE_ORDER.map(r => ({ name: r, max: maxVal })),
+      axisName: { color: '#6B6B6B', fontSize: 12, fontFamily: 'Kaiti SC, KaiTi, serif' },
+      splitNumber: 4,
+      axisLine: { lineStyle: { color: '#ddd' } },
+      splitLine: { lineStyle: { color: '#e8e3d8' } },
+      splitArea: { areaStyle: { color: ['#F5F1E8', '#F5F1E8'] } },
+    },
+    series: [{
+      type: 'radar',
+      symbol: 'circle', symbolSize: 6,
+      data: [{
+        value: values,
+        name: detail.value?.name || '',
+        areaStyle: { color: color + '1A' },
+        lineStyle: { color, width: 2.5 },
+        itemStyle: { color, borderColor: '#F5F1E8', borderWidth: 2 },
+      }],
+    }],
+  }
 })
 
 // ═══ 名句加载 ═══

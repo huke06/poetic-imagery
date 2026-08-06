@@ -59,7 +59,14 @@
 
     <!-- 意象精选 -->
     <section class="max-w-6xl mx-auto px-4 py-16">
-      <SectionTitle sub="点击卡片进入意象详情">意象精选</SectionTitle>
+      <div class="flex items-center justify-between">
+        <SectionTitle sub="点击卡片进入意象详情">意象精选</SectionTitle>
+        <button v-if="featuredPool.length > 6" @click="reshuffle"
+          class="btn-outline !py-1.5 !px-4 !text-xs flex items-center gap-1.5 group">
+          <svg class="w-3.5 h-3.5 transition-transform group-hover:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+          换一批
+        </button>
+      </div>
       <div v-if="loading" class="py-16 text-center text-qianhui">加载中…</div>
         <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-8">
         <ConceptCard v-for="c in concepts" :key="c.id" :concept="c" class="rise-in" />
@@ -118,6 +125,86 @@
       <p class="font-kai text-2xl text-moyan/80 mt-2">「夕阳」为何总与离愁相伴？</p>
       <router-link to="/agent" class="btn-primary mt-8">向灵犀助手提问</router-link>
     </section>
+
+    <!-- 随缘一象 · 竹筒求签 -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="lotteryOpen" class="fixed inset-0 z-[80] flex flex-col items-center justify-center gap-6 select-none"
+          style="background: radial-gradient(ellipse at 50% 25%, #1F2D42 0%, #0D1524 70%)"
+          @click.self="lotteryOpen = false">
+          <p class="font-kai text-xuanzhi/30 text-sm tracking-[0.5em]">— 诚心祈象 · 随缘一签 —</p>
+          <!-- 签筒区域 -->
+          <div class="relative flex flex-col items-center" style="margin-top: 24px">
+            <!-- 竹筒 -->
+            <div class="relative flex flex-col items-center"
+              :class="lotteryRunning ? 'animate-shake' : ''"
+              style="width: 200px">
+              <!-- 筒口上沿 -->
+              <div class="rounded-t-full border-2 border-b-0 border-amber-700/40 z-20"
+                style="width: 160px; height: 22px; background: linear-gradient(180deg, #8B6914, #6B4F10); box-shadow: 0 -2px 6px rgba(0,0,0,0.3)"></div>
+              <!-- 筒身 -->
+              <div class="border-l-2 border-r-2 border-amber-700/30 relative overflow-hidden z-10"
+                style="width: 160px; height: 160px; background: linear-gradient(180deg, #A07828 0%, #8B6914 28%, #7A5C12 55%, #6B4F10 100%); box-shadow: inset 3px 0 12px rgba(0,0,0,0.2), inset -3px 0 12px rgba(0,0,0,0.2)">
+                <!-- 竹节纹 -->
+                <div class="absolute left-0 right-0 bg-amber-800/40" style="top: 40%; height: 3px; box-shadow: 0 1px 2px rgba(0,0,0,0.2)"></div>
+                <div class="absolute left-0 right-0 bg-amber-800/30" style="top: 75%; height: 2px"></div>
+                <!-- 筒内签条 -->
+                <div class="absolute inset-x-3 bottom-0 flex justify-center gap-2 items-end" style="height: 80%">
+                  <template v-if="lotteryRunning">
+                    <div v-for="i in 9" :key="i" class="w-3 rounded-t-sm transition-all duration-75"
+                      :style="{ height: (14 + Math.random()*10) + 'px', background: bambooColor(i), transform: `rotate(${(i-5)*2}deg) translateY(${Math.random()*5-2}px)` }"></div>
+                  </template>
+                  <template v-else-if="lotteryResult">
+                    <div v-for="i in 9" :key="i" class="w-3 rounded-t-sm"
+                      :style="{ height: (12 + i*2) + 'px', background: bambooColor(i), transform: `rotate(${(i-5)*1.5}deg)`, opacity: i === 5 ? 0 : 0.6 }"></div>
+                  </template>
+                  <template v-else>
+                    <div v-for="i in 9" :key="i" class="w-3 rounded-t-sm"
+                      :style="{ height: (12 + i*2) + 'px', background: bambooColor(i), transform: `rotate(${(i-5)*1.5}deg)`, opacity: 0.6 }"></div>
+                  </template>
+                </div>
+              </div>
+              <!-- 筒底 -->
+              <div class="rounded-b-full border-2 border-t-0 border-amber-700/40"
+                style="width: 160px; height: 20px; background: linear-gradient(180deg, #4A3510, #3A2A0E); box-shadow: 0 3px 8px rgba(0,0,0,0.4)"></div>
+              <!-- 底座 -->
+              <div class="rounded-full border border-amber-700/30 -mt-1"
+                style="width: 200px; height: 28px; background: linear-gradient(180deg, #6B4F10, #4A3510); box-shadow: 0 6px 20px rgba(0,0,0,0.5), 0 0 30px rgba(139,105,20,0.15)"></div>
+            </div>
+
+            <!-- 弹出签条 -->
+            <Transition name="stick">
+              <div v-if="!lotteryRunning && lotteryResult" class="absolute flex flex-col items-center"
+                style="bottom: 78%; z-index: 30; animation: stickRise 0.8s cubic-bezier(0.22, 0.61, 0.36, 1) forwards">
+                <div class="rounded-t-sm" style="width: 18px; height: 14px; background: linear-gradient(180deg, #D4A84B, #B8861E)"></div>
+                <div class="border border-amber-600/30 flex items-center justify-center relative"
+                  style="width: 28px; height: 140px; background: linear-gradient(180deg, #F0E6C8 0%, #E0D0A0 15%, #D0BC88 50%, #E0D0A0 85%, #F0E6C8 100%); box-shadow: 3px 0 10px rgba(0,0,0,0.3)">
+                  <span class="font-song text-amber-900 text-xl tracking-widest vertical-rl leading-relaxed"
+                    style="text-shadow: 1px 1px 0 rgba(255,255,255,0.2)">{{ lotteryResult.name }}</span>
+                </div>
+                <div class="rounded-b-sm" style="width: 18px; height: 14px; background: linear-gradient(180deg, #B8861E, #D4A84B)"></div>
+              </div>
+            </Transition>
+          </div>
+          <!-- 按钮 -->
+          <div style="min-height: 52px; margin-top: 56px">
+            <button v-if="lotteryRunning" disabled class="btn-outline !border-amber-600/15 !text-amber-500/25 !py-2.5 !px-10 !text-base">
+              <span class="animate-pulse">摇晃求签中…</span>
+            </button>
+            <div v-else-if="lotteryResult" class="flex items-center gap-6">
+              <button @click="goLottery" class="btn-primary !bg-amber-600 !text-xuanzhi hover:!bg-amber-500 shadow-lg !py-3 !px-12 !text-base !rounded-full transition-all duration-300 tracking-wider font-song"
+                style="box-shadow: 0 0 30px rgba(217,169,72,0.3)">
+                解签 · {{ lotteryResult.name }}
+              </button>
+              <button @click="randomConcept" class="btn-outline !border-amber-600/30 !text-amber-400/60 hover:!bg-amber-600/10 !py-2.5 !px-7 !text-sm !rounded-full transition-all duration-300">
+                再求一签
+              </button>
+            </div>
+          </div>
+          <p class="text-amber-700/15 text-xs tracking-widest">轻触空白处 · 合上签筒</p>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -128,10 +215,12 @@ import ConceptCard from '../components/ConceptCard.vue'
 import ParticleCanvas from '../components/ParticleCanvas.vue'
 import SectionTitle from '../components/SectionTitle.vue'
 
-const concepts = ref([])
+const concepts = ref([])        // 当前展示的6个精选
+const featuredPool = ref([])     // 全部精选池
 const allConcepts = ref([])
 const artworks = ref([])
 const loading = ref(true)
+const lastIndices = ref([])      // 上一批展示的索引，避免重复
 
 const features = [
   { icon: '变', color: '#2B4C7E', title: '意象演变', desc: '朝代时间轴 × 频次折线 × 情感环形图，用数据讲清一个意象的兴衰流变与情感变迁。' },
@@ -139,26 +228,123 @@ const features = [
   { icon: '问', color: '#5B7C5F', title: '智能问答', desc: '基于自建意象知识库的轻量 RAG 问答与格律创诗，回答全部锚定本地权威数据。' },
 ]
 
+function pickBatch(pool, count, excludeIndices) {
+  // 从 pool 中随机选取 count 个，排除 excludeIndices 的项
+  const available = pool
+    .map((item, i) => ({ item, i }))
+    .filter(p => !excludeIndices.includes(p.i))
+  if (available.length < count) {
+    // 不够时重洗全部
+    const shuffled = [...pool].sort(() => Math.random() - 0.5)
+    return { batch: shuffled.slice(0, count), indices: shuffled.slice(0, count).map(item => pool.indexOf(item)) }
+  }
+  const shuffled = available.sort(() => Math.random() - 0.5)
+  const batch = shuffled.slice(0, count).map(p => p.item)
+  const indices = shuffled.slice(0, count).map(p => p.i)
+  return { batch, indices }
+}
+
+function reshuffle() {
+  if (featuredPool.value.length <= 6) return
+  const { batch, indices } = pickBatch(featuredPool.value, 6, lastIndices.value)
+  concepts.value = batch
+  lastIndices.value = indices
+}
+
 onMounted(async () => {
   try {
     const data = await getConceptList({ page_size: 200 })
     allConcepts.value = data.items
-    // 精选：取 poetry_count 最高的前 6 个
-    concepts.value = [...data.items].sort((a, b) => b.poetry_count - a.poetry_count).slice(0, 6)
+    // 取管理后台勾选的精选意象 → 存入池
+    const featured = data.items.filter(c => c.is_featured)
+    if (featured.length) {
+      featuredPool.value = featured
+      const { batch, indices } = pickBatch(featured, Math.min(6, featured.length), [])
+      concepts.value = batch
+      lastIndices.value = indices
+    } else {
+      // 无精选时降级为 poetry_count 前6
+      concepts.value = [...data.items].sort((a, b) => b.poetry_count - a.poetry_count).slice(0, 6)
+    }
   } finally {
     loading.value = false
   }
-  // 艺术品精选
+  // 艺术品精选：取精选池
   try {
-    const art = await getArtworkList({ page: 1, page_size: 4 })
+    const art = await getArtworkList({ featured: true, page_size: 4 })
     artworks.value = art.items
+    // 无精选时降级为最新4幅
+    if (!artworks.value.length) {
+      const fallback = await getArtworkList({ page: 1, page_size: 4 })
+      artworks.value = fallback.items
+    }
   } catch { artworks.value = [] }
 })
 
+const lotteryOpen = ref(false)
+const lotteryRunning = ref(false)
+const lotteryResult = ref(null)
+const lotteryDisplay = ref('')
+
 function randomConcept() {
   if (!allConcepts.value.length) return
+  lotteryOpen.value = true
+  lotteryResult.value = null
+  lotteryRunning.value = true
   const pool = allConcepts.value
-  const pick = pool[Math.floor(Math.random() * pool.length)]
-  window.location.href = `/concept/${pick.id}`
+  const steps = 18 + Math.floor(Math.random() * 12) // 18-30步
+  let step = 0
+  let delay = 60
+  function tick() {
+    lotteryDisplay.value = pool[Math.floor(Math.random() * pool.length)].name
+    step++
+    if (step < steps) {
+      delay = step > steps * 0.6 ? delay + 25 : delay + 5
+      setTimeout(tick, delay)
+    } else {
+      const pick = pool[Math.floor(Math.random() * pool.length)]
+      lotteryDisplay.value = pick.name
+      lotteryResult.value = pick
+      lotteryRunning.value = false
+    }
+  }
+  tick()
+}
+
+const _bambooPalette = ['#D4C08A','#C8B880','#D0BC84','#CCB478','#D8C490','#C4B07C','#D0B880']
+function bambooColor(i) { return _bambooPalette[i % _bambooPalette.length] }
+
+function goLottery() {
+  if (lotteryResult.value) {
+    lotteryOpen.value = false
+    window.location.href = `/concept/${lotteryResult.value.id}`
+  }
 }
 </script>
+
+<style scoped>
+.fade-enter-active, .fade-leave-active { transition: opacity 0.35s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+@keyframes shake {
+  0%,100% { transform: rotate(0deg) translateY(0); }
+  8%  { transform: rotate(-5deg) translateY(-1px); }
+  25% { transform: rotate(4deg) translateY(-2px); }
+  42% { transform: rotate(-3deg) translateY(0); }
+  58% { transform: rotate(2deg) translateY(-1px); }
+  75% { transform: rotate(-1deg) translateY(0); }
+  92% { transform: rotate(0.5deg) translateY(0); }
+}
+@keyframes stickRise {
+  0%   { transform: translateY(0) scale(0.8); opacity: 0; }
+  30%  { transform: translateY(-120px) scale(1.08); opacity: 1; }
+  50%  { transform: translateY(-140px) scale(1.02); }
+  70%  { transform: translateY(-130px) scale(1.05); }
+  85%  { transform: translateY(-138px) scale(1.01); }
+  100% { transform: translateY(-135px) scale(1); opacity: 1; }
+}
+.animate-shake { animation: shake 0.55s ease-in-out infinite; transform-origin: bottom center; }
+.stick-enter-active { transition: all 0.5s ease-out; }
+.stick-leave-active { transition: all 0.2s ease-in; }
+.stick-enter-from, .stick-leave-to { opacity: 0; transform: translateY(20px); }
+.vertical-rl { writing-mode: vertical-rl; }
+</style>

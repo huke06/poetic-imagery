@@ -49,8 +49,8 @@ CSV_CONCEPTS_FALLBACK = """name,category,aliases,emotion_tags,origin_dynasty,pea
 雁,动物,"大雁,鸿雁,归雁,孤雁",思乡 离别 孤寂 时光流逝,先秦,唐宋,,"候鸟，秋来南去，春来北归。","雁的迁徙与书信传说使其成为思乡与离别的经典意象。","雁意象起于《诗经》……"
 """
 
-CSV_COUPLETS_FALLBACK = """word_a,word_b,verse,poet,title
-月,霜,床前明月光，疑是地上霜,李白,《静夜思》
+CSV_COUPLETS_FALLBACK = """word_a,word_b,verse,source
+月,霜,床前明月光，疑是地上霜,李白《静夜思》
 """
 
 CSV_COOCCURRENCE_FALLBACK = """name,to,cooccurrence_type,NPMI,diaphaneity,verse,description
@@ -59,6 +59,22 @@ CSV_COOCCURRENCE_FALLBACK = """name,to,cooccurrence_type,NPMI,diaphaneity,verse,
 
 CSV_ARTWORKS_FALLBACK = """name,artist,dynasty_period,material,size,subject_names,image_url,description,concepts,relation_desc
 对月图,马远,宋代·南宋,绢本设色,23.5x24.6cm,中国绘画;山水,,月下独酌，水天一色，意境空灵,月,画中孤月高悬，与诗词「明月出天山」之境相通
+"""
+
+CSV_DYNASTY_FALLBACK = """word,dynasty,count
+天,先秦,139
+天,秦汉,334
+天,魏晋南北朝,1620
+天,隋唐,11679
+天,五代十国,716
+天,宋,61978
+天,元,25605
+天,明,122097
+天,清,120374
+"""
+
+CSV_EMOTION_STATS_FALLBACK = """word,different_emotion_count,total_emotion_occurrences,emotion_names,emotion_categories,emotion_counts,emotion_ratios,emotion_details
+天,8,20,季节感怀;时光流逝;自然赞美,自然山水类;人生感悟类;自然山水类,10;5;5,50.0%;25.0%;25.0%,"季节感怀[自然山水类](10/50.0%);时光流逝[人生感悟类](5/25.0%);自然赞美[自然山水类](5/25.0%)"
 """
 
 
@@ -154,6 +170,17 @@ def update_concept(concept_id: int, req: ConceptUpsert, db: Session = Depends(ge
         setattr(obj, k, v)
     db.commit()
     return ApiResp(data={"id": obj.id})
+
+
+@router.post("/concept/{concept_id}/feature", dependencies=[Depends(check_token)])
+def toggle_featured(concept_id: int, featured: bool = Query(...), db: Session = Depends(get_db)):
+    """切换首页精选推荐状态"""
+    obj = db.get(Concept, concept_id)
+    if not obj:
+        raise HTTPException(404, "意象不存在")
+    obj.is_featured = featured
+    db.commit()
+    return ApiResp(data={"id": obj.id, "is_featured": obj.is_featured})
 
 
 @router.delete("/concept/{concept_id}", dependencies=[Depends(check_token)])
@@ -321,6 +348,24 @@ def update_artwork(artwork_id: int, req: ArtworkUpsert, db: Session = Depends(ge
         db.add(ConceptArtworkRel(concept_id=cid, artwork_id=obj.id, relation_desc=req.relation_desc, weight=2))
     db.commit()
     return ApiResp(data={"id": obj.id})
+
+
+@router.post("/artwork/{artwork_id}/feature", dependencies=[Depends(check_token)])
+def toggle_artwork_featured(artwork_id: int, concept_id: int = Query(...), featured: bool = Query(...), db: Session = Depends(get_db)):
+    """切换艺术品精选状态（同一意象仅一幅精选，切换时自动取消旧的）"""
+    rel = db.query(ConceptArtworkRel).filter_by(artwork_id=artwork_id, concept_id=concept_id).first()
+    if not rel:
+        raise HTTPException(404, "该意象-艺术品关联不存在")
+    if featured:
+        # 取消该意象其他艺术品的精选
+        db.query(ConceptArtworkRel).filter(
+            ConceptArtworkRel.concept_id == concept_id,
+            ConceptArtworkRel.id != rel.id,
+            ConceptArtworkRel.is_featured == True,
+        ).update({ConceptArtworkRel.is_featured: False})
+    rel.is_featured = featured
+    db.commit()
+    return ApiResp(data={"rel_id": rel.id, "is_featured": rel.is_featured})
 
 
 @router.delete("/artwork/{artwork_id}", dependencies=[Depends(check_token)])
@@ -582,6 +627,23 @@ async def import_file(files: list[UploadFile], dry_run: bool = Query(False), db:
                 for pack in packs:
                     reports.append(importer.import_concept_data(db, pack))
         db.commit()
+
+        # 自动触发诗文角色分析（后台异步，不阻塞导入响应）
+        import threading
+        def _auto_analyze():
+            from ..api.concept import analyze_roles_for_concept
+            from ..database import SessionLocal as AutoDB
+            auto_db = AutoDB()
+            try:
+                ids = [cid for (cid,) in auto_db.query(Concept.id).join(
+                    ConceptPoetryRel, ConceptPoetryRel.concept_id == Concept.id
+                ).filter(ConceptPoetryRel.role_in_poem == "").distinct().all()]
+                for cid in ids:
+                    analyze_roles_for_concept(auto_db, cid)
+                auto_db.commit()
+            finally:
+                auto_db.close()
+        threading.Thread(target=_auto_analyze, daemon=True).start()
     except Exception as e:
         db.rollback()
         raise HTTPException(500, f"导入失败，已回滚：{e}")
@@ -591,7 +653,7 @@ async def import_file(files: list[UploadFile], dry_run: bool = Query(False), db:
 
 @router.get("/import/template")
 def import_template(format: str = Query(
-        "json", pattern="^(json|csv_poetries|csv_concepts|csv_couplets|csv_cooccurrence|csv_artworks)$")):
+        "json", pattern="^(json|csv_poetries|csv_concepts|csv_couplets|csv_cooccurrence|csv_artworks|csv_dynasty_stats|csv_emotion_stats)$")):
     """下载统一导入模板（文件存放于项目根目录 templates/，可直接编辑后上传）"""
     from fastapi.responses import PlainTextResponse
 
@@ -602,6 +664,8 @@ def import_template(format: str = Query(
         "csv_couplets": ("couplets_template.csv", CSV_COUPLETS_FALLBACK),
         "csv_cooccurrence": ("cooccurrence_template.csv", CSV_COOCCURRENCE_FALLBACK),
         "csv_artworks": ("artworks_template.csv", CSV_ARTWORKS_FALLBACK),
+        "csv_dynasty_stats": ("dynasty_stats_template.csv", CSV_DYNASTY_FALLBACK),
+        "csv_emotion_stats": ("emotion_stats_template.csv", CSV_EMOTION_STATS_FALLBACK),
     }
     fname, fallback = files[format]
     tpl_path = Path(__file__).resolve().parent.parent.parent.parent / "templates" / fname
@@ -707,3 +771,19 @@ def recompute_stats(db: Session = Depends(get_db)):
                 n += 1
     db.commit()
     return ApiResp(msg=f"朝代统计已重算（{n} 条）")
+
+
+@router.post("/stats/analyze-roles", dependencies=[Depends(check_token)])
+def analyze_roles(concept_id: int = Query(0, description="指定意象ID，0=全库"), db: Session = Depends(get_db)):
+    """调用 LLM 批量分析意象在诗中的角色（用法谱系数据源）"""
+    from ..api.concept import analyze_roles_for_concept
+    from ..utils.llm import llm_available
+    if not llm_available():
+        return ApiResp(code=1, msg="LLM 未配置，无法分析")
+    ids = [c.id for c in db.query(Concept).all()] if not concept_id else [concept_id]
+    total = 0
+    for cid in ids:
+        n = analyze_roles_for_concept(db, cid)
+        total += n
+    db.commit()
+    return ApiResp(data={"updated": total, "concepts": len(ids)})

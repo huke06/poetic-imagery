@@ -87,7 +87,7 @@ import {
 import Modal from './Modal.vue'
 import Pagination from '../Pagination.vue'
 
-const dynasties = ['先秦', '汉', '魏晋', '唐', '五代', '宋', '元', '明', '清']
+const dynasties = ['先秦', '两汉', '西汉', '魏晋', '三国魏', '东晋', '南北朝', '北朝', '唐', '五代', '北宋', '南宋', '宋', '辽', '金代', '元', '元代', '明', '明代', '清', '清代']
 const items = ref([])
 const concepts = ref([])
 const keyword = ref('')

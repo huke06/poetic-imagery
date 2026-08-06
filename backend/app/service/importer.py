@@ -555,9 +555,17 @@ def import_artworks_csv(db: Session, rows: list[dict]) -> dict:
                 if not concept:
                     report["warnings"].append(f"《{r['name']}》关联意象「{word}」不在库中，已跳过")
                     continue
+                is_feat = str(r.get("is_featured", "")).strip().lower() in ("1", "true", "yes", "是")
                 if not db.query(ConceptArtworkRel).filter_by(concept_id=concept.id, artwork_id=artwork.id).first():
+                    # 同概念互斥：新设为精选时取消旧的
+                    if is_feat:
+                        db.query(ConceptArtworkRel).filter(
+                            ConceptArtworkRel.concept_id == concept.id,
+                            ConceptArtworkRel.is_featured == True,
+                        ).update({ConceptArtworkRel.is_featured: False})
                     db.add(ConceptArtworkRel(concept_id=concept.id, artwork_id=artwork.id,
-                                             relation_desc=r.get("relation_desc", ""), weight=2))
+                                             relation_desc=r.get("relation_desc", ""), weight=2,
+                                             is_featured=is_feat))
                     report["rel_new"] += 1
     return report
 
@@ -625,7 +633,7 @@ def parse_csv(text: str) -> tuple[str, list[dict] | None, list[str]]:
         return "emotion_stats", rows, errors
 
     # ── 朝代出现频次统计表（dynasty_occurrence.csv） ──
-    if {"word", "total_occurrence"} <= headers:
+    if {"word", "total_occurrence"} <= headers or {"word", "corrected_freq"} <= headers:
         from ..utils.taxonomy import DYNASTY_GROUPS
         period_cols = [h for h in (reader.fieldnames or [])
                        if h not in ("word", "corrected_freq", "total_occurrence")]

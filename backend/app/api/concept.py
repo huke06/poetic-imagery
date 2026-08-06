@@ -1,5 +1,6 @@
 """意象模块接口"""
 from collections import Counter
+import json as _json
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -15,7 +16,7 @@ from ..models import (
 from ..schemas import ApiResp
 from ..service.share_card import render_exploration_card, render_share_card
 from ..utils import llm
-from ..utils.taxonomy import DYNASTY_GROUPS, EMOTION_MAIN_LABELS, emotion_main_of
+from ..utils.taxonomy import DYNASTY_GROUPS, EMOTION_MAIN_LABELS, dynasty_group_of, emotion_main_of
 
 router = APIRouter(prefix="/api/concept", tags=["意象"])
 
@@ -47,19 +48,100 @@ def _split_tags(c: Concept) -> list[str]:
     return [t for t in c.emotion_tags.split(",") if t]
 
 
+ROLE_OPTIONS = [
+    "起兴",     # 意象领起全句/全篇，兴发感发（《诗经》六义之兴）
+    "比喻",     # 以他物喻意象，或以此意象喻他物（修辞学·譬喻）
+    "拟人",     # 赋予意象人的情感、行为或意识（修辞学·拟人）
+    "用典",     # 化用历史典故或前人诗句中的意象（修辞学·用典）
+    "对偶",     # 与另一意象在平行位置形成对举（修辞学·对偶）
+    "烘托",     # 营造氛围、渲染意境，非核心语法成分（意境论·烘托）
+    "象征",     # 意象作为抽象情感/理念的具象符号（诗学·象征）
+]
+
 def _infer_role(clause: str, concept_name: str) -> str:
-    """推断意象在诗句中的角色"""
+    """推断意象在诗句中的角色（优先读取缓存，否则规则兜底）"""
     if not clause or not concept_name:
         return "意象载体"
+    # 优先用 LLM 缓存的角色
+    cached = _find_cached_role(clause, concept_name)
+    if cached:
+        return cached
+    # 规则兜底
+    if "如" + concept_name in clause or "似" + concept_name in clause or concept_name + "如" in clause or concept_name + "似" in clause:
+        return "比喻"
     if clause.startswith(concept_name):
-        return "主语/起兴"
-    if clause.endswith(concept_name):
-        return "宾语/寄托"
-    if "如" + concept_name in clause or "似" + concept_name in clause:
-        return "比喻喻体"
-    if concept_name + "如" in clause or concept_name + "似" in clause:
-        return "比喻本体"
-    return "意境烘托"
+        return "起兴"
+    if "典故" in clause or "犹记" in clause or "曾闻" in clause:
+        return "用典"
+    return "烘托"
+
+
+# module-level cache for LLM roles, avoids repeated DB hits in a single request
+_role_cache: dict[tuple[str, str], str] = {}
+
+def _find_cached_role(clause: str, concept_name: str) -> str:
+    key = (clause, concept_name)
+    if key in _role_cache:
+        return _role_cache[key]
+    # Try from DB (via a quick query — we use a global session helper here)
+    # For simplicity, the spectrum endpoint passes the DB session; we look up at call site
+    return ""
+
+
+def analyze_roles_for_concept(db, concept_id: int, batch_size: int = 5) -> int:
+    """对某个意象的所有未分析句读，批量调用 LLM 推断角色，返回更新条数"""
+    from ..utils.llm import chat, llm_available
+    if not llm_available():
+        return 0
+
+    rels = db.query(ConceptPoetryRel).filter(
+        ConceptPoetryRel.concept_id == concept_id,
+        ConceptPoetryRel.role_in_poem == "",
+    ).all()
+    if not rels:
+        return 0
+
+    concept = db.get(Concept, concept_id)
+    name = concept.name if concept else ""
+    updated = 0
+
+    for i in range(0, len(rels), batch_size):
+        batch = rels[i:i + batch_size]
+        items = []
+        for rel in batch:
+            items.append(f'[{rel.id}] "{rel.clause}"')
+
+        prompt = (
+            f'意象「{name}」在以下诗句中，请在 7 个用法维度上分别打分（0=不涉及, 1=弱相关, 2=强相关）：\n'
+            f'维度：{", ".join(ROLE_OPTIONS)}\n\n'
+            + '\n'.join(items)
+            + '\n\n请用 JSON 数组回复，每条格式：\n'
+            + '{"id": 数字, "role": "主要角色", "scores": {"起兴":0,"比喻":0,"拟人":0,"用典":0,"对偶":0,"烘托":0,"象征":0}}'
+        )
+        result = chat([
+            {"role": "system", "content": "你是一位古典诗词语法分析专家。只回复 JSON 数组。"},
+            {"role": "user", "content": prompt},
+        ])
+        if not result:
+            continue
+
+        # 解析 JSON 响应
+        try:
+            parsed = _json.loads(result.strip().lstrip("```json").rstrip("```"))
+            for rel in batch:
+                entry = next((p for p in parsed if isinstance(p, dict) and p.get("id") == rel.id), None)
+                if not entry:
+                    continue
+                rel.role_in_poem = entry.get("role", "")
+                scores = entry.get("scores", {})
+                if isinstance(scores, dict) and scores:
+                    rel.usage_keywords = _json.dumps(scores, ensure_ascii=False)
+                updated += 1
+        except Exception:
+            continue
+
+    db.commit()
+    return updated
 
 
 def _classify_theme(emotion_tags: list[str]) -> str:
@@ -139,10 +221,13 @@ def concept_list(
     keyword: str = Query("", description="名称关键词"),
     emotion_main: str = Query("", description="一级情感筛选"),
     emotion: str = Query("", description="二级情感筛选"),
+    featured: bool = Query(False, description="仅返回首页精选推荐"),
     db: Session = Depends(get_db),
 ):
     """意象列表（支持分类/关键词/一二级情感筛选，返回情感树供前端渲染）"""
     q = db.query(Concept)
+    if featured:
+        q = q.filter(Concept.is_featured == True)
     if category:
         q = q.filter(Concept.category_main == category)
     if keyword:
@@ -188,6 +273,7 @@ def concept_list(
             "category_main": c.category_main, "category_sub": c.category_sub,
             "aliases": [a for a in c.aliases.split(",") if a],
             "emotion_tags": tags, "emotion_mains": mains, "theme_color": c.theme_color,
+            "is_featured": bool(c.is_featured),
             "classic_clause": classic.clause if classic else "",
             "artwork_thumb": thumb[0] if thumb else "",
             "poetry_count": poetry_count,
@@ -387,6 +473,15 @@ def concept_detail(concept_id: int, db: Session = Depends(get_db)):
                     .filter_by(concept_id=c.id).all() if r.emotion_main},
                    key=lambda m: EMOTION_MAIN_LABELS.index(m) if m in EMOTION_MAIN_LABELS else 99)
 
+    # ── v3：本意象名句涉及的原始朝代（去重，用于筛选下拉） ──
+    raw_dynasties_raw = {p.dynasty for p in
+        db.query(Poetry).join(ConceptPoetryRel, ConceptPoetryRel.poetry_id == Poetry.id)
+        .filter(ConceptPoetryRel.concept_id == c.id).all() if p.dynasty}
+    # 按时序排列：先按九大段位置，段内按名称
+    _GROUP_POS = {g: i for i, g in enumerate(DYNASTY_GROUPS)}
+    raw_dynasties = sorted(raw_dynasties_raw,
+        key=lambda d: (_GROUP_POS.get(dynasty_group_of(d), 99), d))
+
     poetry_count = db.query(func.count(func.distinct(ConceptPoetryRel.poetry_id))).filter_by(concept_id=c.id).scalar()
     artwork_count = db.query(ConceptArtworkRel).filter_by(concept_id=c.id).count()
     return ApiResp(data={
@@ -401,6 +496,7 @@ def concept_detail(concept_id: int, db: Session = Depends(get_db)):
         "emotion_stats": [{"emotion": k, "count": v} for k, v in emotion_counter.items()],
         "emotion_tag_stats": emotion_tag_stats,
         "dynasty_occurrence": dynasty_occurrence,
+        "poetry_dynasties": raw_dynasties,
         "emotion_mains": mains,
         "couplets": couplets,
         "poetry_count": poetry_count, "artwork_count": artwork_count,
@@ -425,7 +521,21 @@ def concept_poetries(
         .filter(ConceptPoetryRel.concept_id == concept_id)
     )
     if dynasty:
-        q = q.filter(Poetry.dynasty == dynasty)
+        from ..utils.taxonomy import dynasty_group_of
+        if dynasty in DYNASTY_GROUPS:
+            # 归并朝代段：匹配所有归属于该段的细粒度朝代
+            matches = set()
+            for p in db.query(Poetry.dynasty).filter(Poetry.id.in_(
+                db.query(ConceptPoetryRel.poetry_id).filter(ConceptPoetryRel.concept_id == concept_id)
+            )).all():
+                if dynasty_group_of(p.dynasty) == dynasty:
+                    matches.add(p.dynasty)
+            if matches:
+                q = q.filter(Poetry.dynasty.in_(matches))
+            else:
+                q = q.filter(Poetry.dynasty == dynasty)
+        else:
+            q = q.filter(Poetry.dynasty == dynasty)
     if emotion:
         q = q.filter(ConceptPoetryRel.emotion == emotion)
     if emotion_main:
@@ -738,12 +848,25 @@ def concept_usage_spectrum(concept_id: int, db: Session = Depends(get_db)):
             "is_classic": rel.is_classic,
             "poetry_title": p.title,
             "dynasty": p.dynasty,
+            "role_in_poem": rel.role_in_poem,
+            "usage_scores": rel.usage_keywords,  # JSON: {"起兴":2,"比喻":1,...}
         })
 
     spectrum = []
     for poet, items in poet_map.items():
         best = max(items, key=lambda x: (x["is_classic"], len(x["clause"])))
         emotions = list(dict.fromkeys(i["emotion"] for i in items if i["emotion"]))
+        # 聚合该诗人所有诗句的评分
+        agg_scores = {}
+        for it in items:
+            raw = it.get("usage_scores", "")
+            if raw:
+                try:
+                    s = _json.loads(raw)
+                    for k, v in s.items():
+                        agg_scores[k] = (agg_scores.get(k, 0) + v)
+                except Exception:
+                    pass
         spectrum.append({
             "poet": poet,
             "dynasty": items[0]["dynasty"],
@@ -751,7 +874,8 @@ def concept_usage_spectrum(concept_id: int, db: Session = Depends(get_db)):
             "representative_verse": best["clause"],
             "poetry_title": best["poetry_title"],
             "emotion_function": "、".join(emotions) if emotions else "待标注",
-            "role_in_poem": _infer_role(best["clause"], c.name),
+            "role_in_poem": best.get("role_in_poem") or _infer_role(best["clause"], c.name),
+            "usage_scores": agg_scores,
         })
 
     spectrum.sort(key=lambda x: x["verse_count"], reverse=True)

@@ -23,9 +23,10 @@
           全文换行写 <code class="bg-black/5 px-1 rounded">\n</code>；情感标签空格分隔
         </div>
         <div class="bg-white/50 rounded p-3 min-w-0 break-words [overflow-wrap:anywhere]">
-          <b class="text-moyan">CSV · 对仗 / 共现 / 艺术品</b><br />
+          <b class="text-moyan">CSV · 对仗 / 共现 / 朝代频次 / 艺术品</b><br />
           <span class="text-moyan/80">对仗</span>：word_a / word_b / verse / poet / title<br />
           <span class="text-moyan/80">共现</span>：name / to / cooccurrence_type / NPMI / diaphaneity / verse / description<br />
+          <span class="text-moyan/80">朝代频次</span>：word / dynasty / count<br />
           <span class="text-moyan/80">艺术品</span>：name / artist / dynasty_period / material / size / subject_names / image_url / description / concepts / relation_desc
         </div>
       </div>
@@ -114,6 +115,7 @@ const templates = [
   { format: 'csv_artworks', label: 'CSV · 艺术品表', file: 'artworks_template.csv' },
   { format: 'csv_couplets', label: 'CSV · 对仗表', file: 'couplets_template.csv' },
   { format: 'csv_cooccurrence', label: 'CSV · 共现分析表', file: 'cooccurrence_template.csv' },
+  { format: 'csv_dynasty_stats', label: 'CSV · 朝代频次表', file: 'dynasty_stats_template.csv' },
 ]
 
 const files = ref([])
