@@ -84,10 +84,7 @@
             <label><span class="text-xs text-qianhui">意象名称（圆点标签）*</span>
               <input v-model="wb.dots[editIdx].label" class="field" placeholder="如：月" /></label>
             <label><span class="text-xs text-qianhui">跳转意象（关联库内意象，可留空）</span>
-              <select v-model.number="wb.dots[editIdx].concept_id" class="field">
-                <option :value="null">（不关联）</option>
-                <option v-for="c in concepts" :key="c.id" :value="c.id">{{ c.name }}</option>
-              </select></label>
+              <SearchSelect v-model="wb.dots[editIdx].concept_id" :options="conceptOptions" placeholder="输入意象名搜索…" /></label>
             <label class="sm:col-span-2"><span class="text-xs text-qianhui">意象基本内容（诗句 / 短语）</span>
               <input v-model="wb.dots[editIdx].poem" class="field" placeholder="如：床前明月光 · 疑是地上霜" /></label>
             <label class="sm:col-span-2"><span class="text-xs text-qianhui">阐释说明</span>
@@ -114,15 +111,20 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   adminAtlasList, adminCreateAtlas, adminDeleteAtlas, adminSaveAtlasDots,
   adminUpdateAtlas, adminUploadAtlasImage, getConceptList,
 } from '../../api'
 import Modal from './Modal.vue'
+import SearchSelect from './SearchSelect.vue'
 
 const items = ref([])
 const concepts = ref([])
+// 供搜索下拉使用：按名称排序的 {value,label} 选项
+const conceptOptions = computed(() => [...concepts.value]
+  .sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+  .map((c) => ({ value: c.id, label: c.name })))
 const wb = ref(null)          // 工作台当前画卷（含 dots）
 const wbFile = ref(null)
 const wbCanvas = ref(null)

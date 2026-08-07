@@ -15,11 +15,15 @@ from sqlalchemy.engine import Engine
 # (表, 列, DDL 片段)
 ADD_COLUMNS = [
     ("concept_poetry_rel", "emotion_main", "VARCHAR(32) NOT NULL DEFAULT ''"),
+    ("concept_poetry_rel", "role_in_poem", "VARCHAR(16) NOT NULL DEFAULT ''"),
+    ("concept_poetry_rel", "usage_keywords", "VARCHAR(128) NOT NULL DEFAULT ''"),
     ("artwork", "dynasty_main", "VARCHAR(32) NOT NULL DEFAULT ''"),
     ("concept", "usage_summary", "TEXT NOT NULL DEFAULT ''"),
+    ("concept", "is_featured", "INTEGER NOT NULL DEFAULT 0"),
     ("concept_relation", "cooccurrence_type", "VARCHAR(16) NOT NULL DEFAULT ''"),
     ("concept_relation", "diaphaneity", "FLOAT NOT NULL DEFAULT 0.2"),
     ("concept_relation", "verse", "VARCHAR(255) NOT NULL DEFAULT ''"),
+    ("concept_artwork_rel", "is_featured", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 
