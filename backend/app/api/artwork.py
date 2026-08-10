@@ -16,14 +16,13 @@ def artwork_list(
     dynasty: str = Query("", description="主朝代筛选"),
     subject: str = Query("", description="主题筛选"),
     keyword: str = Query("", description="名称/作者关键词"),
-    featured: bool = Query(False, description="仅返回精选艺术品"),
+    featured: str = Query("", description="传任意非空值即仅返回首页精选艺术品"),
     page: int = Query(1, ge=1), page_size: int = Query(12, ge=1, le=50),
     db: Session = Depends(get_db),
 ):
     q = db.query(Artwork)
-    if featured:
-        q = q.join(ConceptArtworkRel, ConceptArtworkRel.artwork_id == Artwork.id)\
-             .filter(ConceptArtworkRel.is_featured == True).distinct()
+    if featured and featured.lower() in ("1", "true", "yes"):
+        q = q.filter(Artwork.is_featured == 1)
     if dynasty:
         q = q.filter(Artwork.dynasty_main == dynasty)
     if subject:
@@ -32,7 +31,10 @@ def artwork_list(
         like = f"%{keyword}%"
         q = q.filter((Artwork.name.like(like)) | (Artwork.artist.like(like)))
     total = q.count()
-    rows = q.order_by(Artwork.id).offset((page - 1) * page_size).limit(page_size).all()
+    if featured and featured.lower() in ("1", "true", "yes"):
+        rows = q.order_by(func.random()).limit(8).all()
+    else:
+        rows = q.order_by(Artwork.id).offset((page - 1) * page_size).limit(page_size).all()
 
     # 主朝代统计（可识别、可检索）：九大段 + 近现代/当代（艺术品不限古诗朝代），附每段数量
     counts = dict(db.query(Artwork.dynasty_main, func.count(Artwork.id))

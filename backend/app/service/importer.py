@@ -231,6 +231,13 @@ def import_concept_data(db: Session, data: dict, with_svg: bool = True) -> dict:
                 report["rel_skipped"] += 1
                 continue
             r["emotion_main"] = emotion_main_of(r["emotion"])
+            # 去重：同一概念+诗文+名句不重复导入
+            dup = db.query(ConceptPoetryRel).filter_by(
+                concept_id=concept.id, poetry_id=poetry.id, clause=r.get("clause", "")
+            ).first()
+            if dup:
+                report["rel_skipped"] += 1
+                continue
             db.add(ConceptPoetryRel(concept_id=concept.id, poetry_id=poetry.id, **r))
             report["rel_new"] += 1
 
@@ -279,6 +286,7 @@ def import_concept_data(db: Session, data: dict, with_svg: bool = True) -> dict:
                     subject_names=normalize_subjects(a.get("subject_names", "")),
                     image_url=image_url, thumb_url=thumb_url,
                     description=a.get("description", ""),
+                    is_featured=str(a.get("is_featured", "")).strip().lower() in ("1", "true", "yes", "是"),
                 )
                 db.add(artwork)
                 db.flush()
@@ -407,14 +415,62 @@ def import_couplets_csv(db: Session, rows: list[dict]) -> dict:
 
 
 def import_cooccurrence_csv(db: Session, rows: list[dict]) -> dict:
-    """共现分析 CSV 入库：更新 cooccurrence_stat，并同步到 concept_relation（两端均为库内意象时）"""
-    report = {"inserted": 0, "updated": 0, "relation_synced": 0}
+    """共现分析 CSV 入库：v2 支持 con_word 桥接（word→桥接词→目标）"""
+    report = {"inserted": 0, "updated": 0, "relation_synced": 0, "bridge_edges": 0}
+    _br_done = set()
     for r in rows:
+        con_word = r.get("con_word", "")
+
+        if con_word:
+            # ── 桥接链路：word→桥接词(包含) + 桥接词→目标(共现) ──
+            ca = _match_concept(db, r["word_a"])
+            if ca:
+                # 桥接词严格按名称匹配，不走别名（避免桥接词被误判为原意象）
+                br = db.query(Concept).filter_by(name=con_word).first()
+                if not br:
+                    br = Concept(name=con_word, category_main="自然类", category_sub="桥接词", theme_color="#aaaaaa")
+                    db.add(br); db.flush()
+                if (ca.id, br.id) not in _br_done:
+                    _br_done.add((ca.id, br.id))
+                    db.add(ConceptRelation(from_concept_id=ca.id, to_concept_id=br.id,
+                                           relation_type="包含", npmi=0, diaphaneity=0.3))
+                    report["bridge_edges"] += 1
+                cb = _match_concept(db, r["word_b"])
+                if not cb:
+                    cb = Concept(name=r["word_b"], category_main="自然类", category_sub="桥接词", theme_color="#aaaaaa")
+                    db.add(cb); db.flush()
+                existing_br = db.query(CooccurrenceStat).filter_by(word_a=con_word, word_b=r["word_b"]).first()
+                if not existing_br:
+                    db.add(CooccurrenceStat(word_a=con_word, word_b=r["word_b"],
+                        cooccurrence_type=r.get("cooccurrence_type", ""),
+                        same_sentence=r.get("same_sentence", 0), adjacent_sentence=r.get("adjacent_sentence", 0),
+                        same_poem=r.get("same_poem", 0), npmi=r.get("npmi", 0.0),
+                        diaphaneity=r.get("diaphaneity", 0.2), verse=r.get("verse", ""),
+                        description=r.get("description", ""),
+                        poem_title=r.get("poem_title", ""), poet=r.get("poet", ""), dynasty=r.get("dynasty", "")))
+                    report["inserted"] += 1
+                else:
+                    for f in ("verse", "description", "poem_title", "poet", "dynasty"):
+                        if r.get(f): setattr(existing_br, f, r.get(f))
+                if (br.id, cb.id) not in _br_done:
+                    _br_done.add((br.id, cb.id))
+                    db.add(ConceptRelation(from_concept_id=br.id, to_concept_id=cb.id, relation_type="共现",
+                        cooccurrence_type=r.get("cooccurrence_type", ""),
+                        same_sentence=r.get("same_sentence", 0), adjacent_sentence=r.get("adjacent_sentence", 0),
+                        same_poem=r.get("same_poem", 0), npmi=r.get("npmi", 0.0),
+                        diaphaneity=r.get("diaphaneity", 0.2), verse=r.get("verse", ""),
+                        description=r.get("description", ""),
+                        poem_title=r.get("poem_title", ""), poet=r.get("poet", ""), dynasty=r.get("dynasty", "")))
+                    report["relation_synced"] += 1
+            continue
+
+        # ── 无桥接词：直接共现 ──
+
         key = {"word_a": r["word_a"], "word_b": r["word_b"]}
         existing = db.query(CooccurrenceStat).filter_by(**key).first()
         if existing:
             for f in ("cooccurrence_type", "same_sentence", "adjacent_sentence", "same_poem",
-                      "npmi", "diaphaneity", "verse", "description"):
+                      "npmi", "diaphaneity", "verse", "description", "poem_title", "poet", "dynasty"):
                 if r.get(f) or f in ("npmi", "diaphaneity"):
                     setattr(existing, f, r.get(f))
             report["updated"] += 1
@@ -424,7 +480,8 @@ def import_cooccurrence_csv(db: Session, rows: list[dict]) -> dict:
                                     adjacent_sentence=r.get("adjacent_sentence", 0),
                                     same_poem=r.get("same_poem", 0),
                                     npmi=r.get("npmi", 0.0), diaphaneity=r.get("diaphaneity", 0.2),
-                                    verse=r.get("verse", ""), description=r.get("description", "")))
+                                    verse=r.get("verse", ""), description=r.get("description", ""),
+                                    poem_title=r.get("poem_title", ""), poet=r.get("poet", ""), dynasty=r.get("dynasty", "")))
             report["inserted"] += 1
         # 同步到意象关联表（仅当两端都是库内意象）
         ca, cb = _match_concept(db, r["word_a"]), _match_concept(db, r["word_b"])
@@ -453,7 +510,7 @@ def import_cooccurrence_csv(db: Session, rows: list[dict]) -> dict:
                                        same_poem=r.get("same_poem", 0),
                                        npmi=r.get("npmi", 0.0), diaphaneity=r.get("diaphaneity", 0.2),
                                        verse=r.get("verse", ""), description=r.get("description", "")))
-            report["relation_synced"] += 1
+
     return report
 
 
@@ -519,7 +576,10 @@ def import_artworks_csv(db: Session, rows: list[dict]) -> dict:
     for r in rows:
         artist = r.get("artist", "佚名")
         period = r.get("dynasty_period") or r.get("dynasty") or ""
+        # 去重：优先 name+artist，其次仅 name，自动合并关联关系
         artwork = db.query(Artwork).filter_by(name=r["name"], artist=artist).first()
+        if not artwork:
+            artwork = db.query(Artwork).filter_by(name=r["name"]).first()
         if artwork:
             report["updated"] += 1
             for src, dst in (("material", "material"), ("size", "size"),
@@ -528,6 +588,7 @@ def import_artworks_csv(db: Session, rows: list[dict]) -> dict:
                     setattr(artwork, dst, normalize_subjects(r[src]) if dst == "subject_names" else r[src])
             if period and not artwork.dynasty_period:
                 artwork.dynasty_period = period
+            if r.get("is_featured"): artwork.is_featured = str(r.get("is_featured", "")).strip().lower() in ("1", "true", "yes", "是")
             if r.get("image_url") and (not artwork.image_url or artwork.image_url.endswith(".svg")):
                 artwork.image_url = r["image_url"]
                 artwork.thumb_url = r["image_url"]
@@ -543,6 +604,7 @@ def import_artworks_csv(db: Session, rows: list[dict]) -> dict:
                 subject_names=normalize_subjects(r.get("subject_names", "")),
                 image_url=image_url, thumb_url=image_url,
                 description=r.get("description", ""),
+                is_featured=str(r.get("is_featured", "")).strip().lower() in ("1", "true", "yes", "是"),
             )
             db.add(artwork)
             db.flush()
@@ -655,16 +717,29 @@ def parse_csv(text: str) -> tuple[str, list[dict] | None, list[str]]:
                 rows.append({"word": word, "dynasty": group, "count": count})
         return "dynasty_stats", rows, errors
 
-    # ── 共现分析表：标注格式 name/to/… 或分析结果格式 word_a/word_b/NPMI… ──
-    is_cooc_annot = {"name", "to"} <= headers
+    # ── 共现分析表：v2 桥接格式 word/con_word/to ｜标注格式 name/to ｜分析结果 word_a/word_b ──
+    is_cooc_bridge = {"word", "to"} <= headers
+    is_cooc_annot = {"name", "to"} <= headers and not is_cooc_bridge
     is_cooc_result = ({"word_a", "word_b"} <= headers
                       and any("npmi" in h or h.startswith(("same_poem", "same_sentence",
                                                            "adjacent_sentence", "transparency"))
                               for h in headers_lower))
-    if is_cooc_annot or is_cooc_result:
+    if is_cooc_bridge or is_cooc_annot or is_cooc_result:
         rows = []
         for i, row in enumerate(reader, start=2):
-            if is_cooc_annot:
+            if is_cooc_bridge:
+                wa = _col(row, "word")
+                bridge = _col(row, "con_word")
+                wb = _col(row, "to")
+                ctype = _col(row, "cooccurrence_type")
+                ss = int(float(_col(row, "same_sentence") or 0) or 0)
+                adj = int(float(_col(row, "adjacent_sentence") or 0) or 0)
+                sp = int(float(_col(row, "same_poem") or 0) or 0)
+                npmi = _col(row, "npmi")
+                dia = _col(row, "diaphaneity")
+                verse = _col(row, "verse")
+                desc = _unescape_newlines(_col(row, "description"))
+            elif is_cooc_annot:
                 wa, wb = _col(row, "name"), _col(row, "to")
                 ctype = _col(row, "cooccurrence_type")
                 npmi = _col(row, "npmi")
@@ -695,9 +770,13 @@ def parse_csv(text: str) -> tuple[str, list[dict] | None, list[str]]:
                 dia_v = max(0.2, float(dia)) if dia else max(0.2, min(1.0, (npmi_v + 1) / 2))
             except ValueError:
                 dia_v = 0.2
-            rows.append({"word_a": wa, "word_b": wb, "cooccurrence_type": ctype,
-                         "same_sentence": ss, "adjacent_sentence": adj, "same_poem": sp,
-                         "npmi": npmi_v, "diaphaneity": dia_v, "verse": verse, "description": desc})
+            rd = {"word_a": wa, "word_b": wb, "cooccurrence_type": ctype,
+                  "same_sentence": ss, "adjacent_sentence": adj, "same_poem": sp,
+                  "npmi": npmi_v, "diaphaneity": dia_v, "verse": verse, "description": desc,
+                  "poem_title": _col(row, "poem_title"), "poet": _col(row, "poet"), "dynasty": _col(row, "dynasty")}
+            if is_cooc_bridge and bridge:
+                rd["con_word"] = bridge
+            rows.append(rd)
         return "cooccurrence", rows, errors
 
     # ── 对仗表：word_a / word_b / verse / poet / title ──

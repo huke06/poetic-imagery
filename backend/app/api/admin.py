@@ -53,8 +53,9 @@ CSV_COUPLETS_FALLBACK = """word_a,word_b,verse,source
 月,霜,床前明月光，疑是地上霜,李白《静夜思》
 """
 
-CSV_COOCCURRENCE_FALLBACK = """name,to,cooccurrence_type,NPMI,diaphaneity,verse,description
-月,霜,句内,0.65,0.8,床前明月光，疑是地上霜,月色如霜，清冷之景常相映衬
+CSV_COOCCURRENCE_FALLBACK = """word,con_word,to,cooccurrence_type,npmi,diaphaneity,verse,description
+天,天河,河水,句内,0.52,0.8,天河夜转漂回星，银浦流云学水声。,天河与河水对举营造浩瀚夜空之境
+玉,,金,句内,0.65,0.85,金风玉露一相逢，便胜却人间无数。,金玉对举为唐诗经典修辞
 """
 
 CSV_ARTWORKS_FALLBACK = """name,artist,dynasty_period,material,size,subject_names,image_url,description,concepts,relation_desc
@@ -94,7 +95,7 @@ def _split_clauses(content: str) -> list[str]:
 def overview(db: Session = Depends(get_db)):
     from ..utils import llm
     return ApiResp(data={
-        "concepts": db.query(Concept).count(),
+        "concepts": db.query(Concept).filter(Concept.category_sub != "桥接词").count(),
         "poetries": db.query(Poetry).count(),
         "artworks": db.query(Artwork).count(),
         "concept_poetry_rels": db.query(ConceptPoetryRel).count(),
@@ -104,7 +105,7 @@ def overview(db: Session = Depends(get_db)):
         "concept_list": [
             {"id": c.id, "name": c.name, "category_main": c.category_main, "category_sub": c.category_sub,
              "theme_color": c.theme_color}
-            for c in db.query(Concept).order_by(Concept.id).all()
+            for c in db.query(Concept).filter(Concept.category_sub != "桥接词").order_by(Concept.id).all()
         ],
     })
 
@@ -495,7 +496,7 @@ def relation_suggestions(db: Session = Depends(get_db)):
     2. 情感同源：两意象的情感标签存在交集
     已人工建立的关联会标注 exists=true
     """
-    concepts = {c.id: c for c in db.query(Concept).all()}
+    concepts = {c.id: c for c in db.query(Concept).filter(Concept.category_sub != "桥接词").all()}
     rels = db.query(ConceptPoetryRel).all()
     # concept_id -> {poetry_id: [clauses]}
     by_concept: dict[int, dict[int, list[str]]] = {}
@@ -758,7 +759,7 @@ def recompute_stats(db: Session = Depends(get_db)):
     from scripts.seed_data import DYNASTY_ORDER
     db.query(DynastyStats).delete()
     n = 0
-    for c in db.query(Concept).all():
+    for c in db.query(Concept).filter(Concept.category_sub != "桥接词").all():
         counts, seen = {}, set()
         for r in db.query(ConceptPoetryRel).filter_by(concept_id=c.id).all():
             dyn = r.poetry.dynasty
@@ -780,7 +781,7 @@ def analyze_roles(concept_id: int = Query(0, description="指定意象ID，0=全
     from ..utils.llm import llm_available
     if not llm_available():
         return ApiResp(code=1, msg="LLM 未配置，无法分析")
-    ids = [c.id for c in db.query(Concept).all()] if not concept_id else [concept_id]
+    ids = [c.id for c in db.query(Concept).filter(Concept.category_sub != "桥接词").all()] if not concept_id else [concept_id]
     total = 0
     for cid in ids:
         n = analyze_roles_for_concept(db, cid)

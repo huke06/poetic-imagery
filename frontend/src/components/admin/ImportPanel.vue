@@ -25,7 +25,7 @@
         <div class="bg-white/50 rounded p-3 min-w-0 break-words [overflow-wrap:anywhere]">
           <b class="text-moyan">CSV · 对仗 / 共现 / 朝代频次 / 艺术品</b><br />
           <span class="text-moyan/80">对仗</span>：word_a / word_b / verse / poet / title<br />
-          <span class="text-moyan/80">共现</span>：name / to / cooccurrence_type / NPMI / diaphaneity / verse / description<br />
+          <span class="text-moyan/80">共现</span>：word / con_word（可选桥接词） / to / cooccurrence_type / npmi / diaphaneity / verse / description<br />
           <span class="text-moyan/80">朝代频次</span>：word / dynasty / count<br />
           <span class="text-moyan/80">艺术品</span>：name / artist / dynasty_period / material / size / subject_names / image_url / description / concepts / relation_desc
         </div>

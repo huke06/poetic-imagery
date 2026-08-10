@@ -226,6 +226,7 @@ def concept_list(
 ):
     """意象列表（支持分类/关键词/一二级情感筛选，返回情感树供前端渲染）"""
     q = db.query(Concept)
+    q = q.filter(Concept.category_sub != "桥接词")  # 桥接词不出现在意象列表
     if featured:
         q = q.filter(Concept.is_featured == True)
     if category:
@@ -235,10 +236,11 @@ def concept_list(
 
     # 先聚合全库情感树（一级 → 二级集合），不受当前筛选影响，保证筛选器选项稳定
     emotion_tree: dict[str, set] = {}
-    for c in db.query(Concept).all():
+    for c in db.query(Concept).filter(Concept.category_sub != "桥接词").all():
         for tag in _split_tags(c):
             if tag in EMOTION_MAIN_LABELS:
-                continue  # 一级类别名本身不作为二级选项
+                emotion_tree.setdefault(tag, set())  # 一级标签自身作为选项
+                continue
             main = emotion_main_of(tag)
             if main:
                 emotion_tree.setdefault(main, set()).add(tag)
@@ -258,7 +260,7 @@ def concept_list(
             continue
         classic = (
             db.query(ConceptPoetryRel)
-            .filter_by(concept_id=c.id, is_classic=1)
+            .filter(ConceptPoetryRel.concept_id == c.id, ConceptPoetryRel.weight >= 2)
             .order_by(ConceptPoetryRel.weight.desc()).first()
         )
         thumb = (
@@ -306,7 +308,7 @@ def concept_resolve(
         })
 
     # 3. 匹配 aliases
-    all_concepts = db.query(Concept).all()
+    all_concepts = db.query(Concept).filter(Concept.category_sub != "桥接词").all()
     for c in all_concepts:
         aliases = [a.strip() for a in (c.aliases or "").split(",") if a.strip()]
         if q in aliases:
@@ -359,7 +361,7 @@ def concept_resolve(
 @router.get("/panorama")
 def concept_panorama(db: Session = Depends(get_db)):
     """意象全景图谱：按七大情感主题族组织所有意象。"""
-    concepts = db.query(Concept).all()
+    concepts = db.query(Concept).filter(Concept.category_sub != "桥接词").all()
     themes_map: dict[str, list] = {}
 
     for c in concepts:
@@ -396,7 +398,7 @@ def recommend_similar(
     db: Session = Depends(get_db),
 ):
     """当搜索词在库中不存在时，调用 LLM 推荐相近意象"""
-    all_concepts = db.query(Concept).all()
+    all_concepts = db.query(Concept).filter(Concept.category_sub != "桥接词").all()
     names = [c.name for c in all_concepts]
 
     if not llm.llm_available():
@@ -541,7 +543,7 @@ def concept_poetries(
     if emotion_main:
         q = q.filter(ConceptPoetryRel.emotion_main == emotion_main)
     total = q.count()
-    rows = (q.order_by(ConceptPoetryRel.is_classic.desc(), ConceptPoetryRel.weight.desc(), Poetry.id)
+    rows = (q.order_by(ConceptPoetryRel.weight.desc(), Poetry.id)
              .offset((page - 1) * page_size).limit(page_size).all())
     items = [{
         "rel_id": rel.id, "clause": rel.clause, "emotion": rel.emotion,
@@ -565,7 +567,9 @@ def concept_artworks(concept_id: int, db: Session = Depends(get_db)):
     )
     return ApiResp(data=[{
         "rel_id": rel.id, "relation_desc": rel.relation_desc,
-        "artwork": {"id": a.id, "name": a.name, "artist": a.artist, "dynasty": a.dynasty,
+        "artwork": {"id": a.id, "name": a.name, "artist": a.artist,
+                    "dynasty": a.dynasty_period or a.dynasty_main,
+                    "dynasty_main": a.dynasty_main,
                     "image_url": a.image_url, "thumb_url": a.thumb_url},
     } for rel, a in rows])
 
@@ -584,6 +588,17 @@ def concept_relations(concept_id: int, db: Session = Depends(get_db)):
     node_ids = {concept_id}
     for e in edges:
         node_ids.update([e.from_concept_id, e.to_concept_id])
+
+    # v2 桥接扩展：包含关系 → 拉取桥接词的共现边（不含包含边自身）
+    bridge_ids = {e.to_concept_id for e in edges if e.relation_type == "包含"}
+    if bridge_ids:
+        bridge_edges = db.query(ConceptRelation).filter(
+            ConceptRelation.relation_type == "共现",
+            (ConceptRelation.from_concept_id.in_(bridge_ids)) | (ConceptRelation.to_concept_id.in_(bridge_ids))
+        ).all()
+        for be in bridge_edges:
+            node_ids.update([be.from_concept_id, be.to_concept_id])
+        edges = list(edges) + bridge_edges
 
     # 自动共现推导
     my_poetry_ids = {r.poetry_id for r in db.query(ConceptPoetryRel).filter_by(concept_id=concept_id).all()}
@@ -664,6 +679,7 @@ def concept_cooccurrence(concept_id: int, limit: int = Query(24, ge=1, le=60),
         edges_map[other] = {
             "other": other, "npmi": r.npmi, "type": r.cooccurrence_type,
             "diaphaneity": r.diaphaneity, "verse": r.verse, "description": r.description,
+            "poem_title": r.poem_title or "", "poet": r.poet or "", "dynasty": r.dynasty or "",
             "same_sentence": r.same_sentence, "adjacent_sentence": r.adjacent_sentence,
             "same_poem": r.same_poem, "source": "stat",
         }
@@ -690,9 +706,63 @@ def concept_cooccurrence(concept_id: int, limit: int = Query(24, ge=1, le=60),
         edges_map[other] = {
             "other": other, "npmi": e.npmi, "type": e.cooccurrence_type,
             "diaphaneity": e.diaphaneity, "verse": e.verse, "description": e.description,
+            "poem_title": e.poem_title or "", "poet": e.poet or "", "dynasty": e.dynasty or "",
             "same_sentence": e.same_sentence, "adjacent_sentence": e.adjacent_sentence,
             "same_poem": e.same_poem, "source": "relation", "concept_id": other_id,
         }
+
+    # ── v2 桥接扩展：拉取包含关系 → 桥接词的共现边 ──
+    bridge_rels = db.query(ConceptRelation).filter_by(from_concept_id=c.id, relation_type="包含").all()
+    bridge_concepts = {br.to_concept_id: db.get(Concept, br.to_concept_id) for br in bridge_rels}
+    for br in bridge_rels:
+        br_concept = bridge_concepts.get(br.to_concept_id)
+        if not br_concept: continue
+        bridge_name = br_concept.name
+        # 桥接词自身的共现边
+        br_cooc = db.query(CooccurrenceStat).filter(
+            or_(CooccurrenceStat.word_a == bridge_name,
+                CooccurrenceStat.word_b == bridge_name)
+        ).all()
+        for bc in br_cooc:
+            other = bc.word_b if bc.word_a == bridge_name else bc.word_a
+            if other in edges_map:
+                # 已有直接边时，改为桥接链路（优先级更高）
+                edges_map[other]["source"] = "bridge"
+                edges_map[other]["bridge_word"] = bridge_name
+                edges_map[other]["bridge_id"] = br.to_concept_id
+                if not edges_map[other].get("verse") and bc.verse: edges_map[other]["verse"] = bc.verse
+                if not edges_map[other].get("description") and bc.description: edges_map[other]["description"] = bc.description
+                for f in ("poem_title", "poet", "dynasty"):
+                    if not edges_map[other].get(f) and getattr(bc, f, ""): edges_map[other][f] = getattr(bc, f, "")
+                continue
+            # 从 ConceptRelation 补全人工标注的 verse/description
+            other_c = db.query(Concept).filter_by(name=other).first()
+            if other_c and (not bc.verse or not bc.description):
+                br_rels = db.query(ConceptRelation).filter_by(
+                    from_concept_id=br.to_concept_id, to_concept_id=other_c.id
+                ).all()
+                for br_rel in br_rels:
+                    if not bc.verse and br_rel.verse: bc.verse = br_rel.verse
+                    if not bc.description and br_rel.description: bc.description = br_rel.description
+
+            edges_map[other] = {
+                "other": other, "npmi": bc.npmi, "type": bc.cooccurrence_type,
+                "diaphaneity": bc.diaphaneity, "verse": bc.verse, "description": bc.description,
+                "poem_title": getattr(bc, "poem_title", ""), "poet": getattr(bc, "poet", ""), "dynasty": getattr(bc, "dynasty", ""),
+                "same_sentence": bc.same_sentence, "adjacent_sentence": bc.adjacent_sentence,
+                "same_poem": bc.same_poem, "source": "bridge",
+                "bridge_word": bridge_name, "bridge_id": br.to_concept_id,
+            }
+    # 桥接词也加入 nodes（覆盖 ConceptRelation 可能产生的空 type）
+    for br in bridge_rels:
+        br_concept = bridge_concepts.get(br.to_concept_id)
+        if br_concept:
+            edges_map[br_concept.name] = {
+                "other": br_concept.name, "npmi": 0, "type": "包含",
+                "diaphaneity": 0.3, "verse": "", "description": "桥接词：" + (br.description or ""),
+                "same_sentence": 0, "adjacent_sentence": 0, "same_poem": 0,
+                "source": "bridge_node", "bridge_id": br_concept.id, "concept_id": br_concept.id,
+            }
 
     # ── 排序取 top N，构建节点 ──
     edges = sorted(edges_map.values(), key=lambda x: (x["npmi"], x["same_poem"]), reverse=True)[:limit]
@@ -711,17 +781,25 @@ def concept_cooccurrence(concept_id: int, limit: int = Query(24, ge=1, le=60),
         nodes.append({
             "id": f"n{e['other']}", "name": e["other"], "center": False,
             "concept_id": oc.id if oc else None,
+            "is_bridge": (oc.category_sub == "桥接词") if oc else False,
             "theme_color": oc.theme_color if oc else "#8A6D3B",
         })
 
-    edge_items = [{
-        "source": f"c{c.id}", "target": f"n{e['other']}",
+    edge_items = []
+    for e in edges:
+        src_id = f"n{e['bridge_word']}" if e.get("source") == "bridge" and e.get("bridge_word") else f"c{c.id}"
+        tgt_id = f"n{e['other']}"
+        rel_type = "包含" if e.get("type") == "包含" else "共现"
+        edge_items.append({
+        "source": src_id, "target": tgt_id,
+        "relation_type": rel_type,
         "name": e["other"], "npmi": e["npmi"], "type": e["type"],
         "diaphaneity": max(0.2, min(1.0, e["diaphaneity"] or 0.2)),
         "verse": e["verse"], "description": e["description"],
         "same_sentence": e["same_sentence"], "adjacent_sentence": e["adjacent_sentence"],
         "same_poem": e["same_poem"], "concept_id": e.get("concept_id"),
-    } for e in edges]
+        "poem_title": e.get("poem_title", ""), "poet": e.get("poet", ""), "dynasty": e.get("dynasty", ""),
+    })
 
     return ApiResp(data={
         "concept_id": c.id, "concept_name": c.name,
@@ -777,7 +855,7 @@ def _build_spectrum(db: Session, c: Concept) -> list[dict]:
         db.query(ConceptPoetryRel, Poetry)
         .join(Poetry, ConceptPoetryRel.poetry_id == Poetry.id)
         .filter(ConceptPoetryRel.concept_id == c.id)
-        .order_by(ConceptPoetryRel.is_classic.desc(), ConceptPoetryRel.weight.desc())
+        .order_by(ConceptPoetryRel.weight.desc())
         .all()
     )
     for rel, p in rels:
@@ -787,7 +865,7 @@ def _build_spectrum(db: Session, c: Concept) -> list[dict]:
         })
     spectrum = []
     for poet, items in poet_map.items():
-        best = max(items, key=lambda x: (x["is_classic"], len(x["clause"])))
+        best = max(items, key=lambda x: (x.get("weight", 0), len(x["clause"])))
         emotions = list(dict.fromkeys(i["emotion"] for i in items if i["emotion"]))
         spectrum.append({
             "poet": poet, "dynasty": items[0]["dynasty"],
@@ -838,7 +916,7 @@ def concept_usage_spectrum(concept_id: int, db: Session = Depends(get_db)):
         db.query(ConceptPoetryRel, Poetry)
         .join(Poetry, ConceptPoetryRel.poetry_id == Poetry.id)
         .filter(ConceptPoetryRel.concept_id == concept_id)
-        .order_by(ConceptPoetryRel.is_classic.desc(), ConceptPoetryRel.weight.desc())
+        .order_by(ConceptPoetryRel.weight.desc())
         .all()
     )
     for rel, p in rels:
@@ -854,7 +932,7 @@ def concept_usage_spectrum(concept_id: int, db: Session = Depends(get_db)):
 
     spectrum = []
     for poet, items in poet_map.items():
-        best = max(items, key=lambda x: (x["is_classic"], len(x["clause"])))
+        best = max(items, key=lambda x: (x.get("weight", 0), len(x["clause"])))
         emotions = list(dict.fromkeys(i["emotion"] for i in items if i["emotion"]))
         # 聚合该诗人所有诗句的评分
         agg_scores = {}

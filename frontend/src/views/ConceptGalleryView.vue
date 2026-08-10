@@ -4,7 +4,14 @@
 
     <!-- 筛选栏 -->
     <div class="space-y-3 mt-6">
-      <div class="flex flex-wrap items-center gap-2">
+      <!-- 模式切换 -->
+      <div class="flex bg-shiqing/5 rounded-full p-0.5 w-fit">
+        <button class="px-4 py-1.5 text-xs rounded-full transition-all" :class="filterMode==='category'?'bg-shiqing text-white shadow-sm':'text-qianhui hover:text-shiqing'"
+          @click="filterMode='category';activeCategory='';activeSub='';activeEmotionMain='';load()">按意象性质</button>
+        <button class="px-4 py-1.5 text-xs rounded-full transition-all" :class="filterMode==='emotion'?'bg-shiqing text-white shadow-sm':'text-qianhui hover:text-shiqing'"
+          @click="filterMode='emotion';activeCategory='';activeSub='';activeEmotionMain='';load()">按意象情感</button>
+      </div>
+      <div v-show="filterMode==='category'" class="flex flex-wrap items-center gap-2">
         <button v-for="cat in categories" :key="cat"
           class="px-4 py-1.5 text-sm rounded-full border transition-all tracking-wider"
           :class="activeCategory === cat
@@ -24,7 +31,7 @@
         </div>
       </div>
       <!-- 二级类目 -->
-      <div v-if="subCats.length" class="flex flex-wrap gap-1.5">
+      <div v-show="filterMode==='category' && subCats.length" class="flex flex-wrap gap-1.5">
         <button v-for="s in subCats" :key="s"
           class="px-3 py-1 text-xs rounded-full border transition-all"
           :class="activeSub === s
@@ -36,10 +43,9 @@
       </div>
 
       <!-- 一级情感 -->
-      <div class="flex flex-wrap items-center gap-2 pt-1">
-        <span class="text-xs text-qianhui tracking-widest mr-1">情感</span>
+      <div v-show="filterMode==='emotion'" class="flex flex-wrap items-center gap-2 pt-1">
         <button v-for="m in emotionMains" :key="m"
-          class="px-3 py-1 text-xs rounded-full border transition-all"
+          class="px-4 py-1.5 text-sm rounded-full border transition-all"
           :class="activeEmotionMain === m ? 'text-white' : 'hover:bg-black/5'"
           :style="activeEmotionMain === m
             ? { background: emotionColor(m), borderColor: emotionColor(m) }
@@ -50,18 +56,6 @@
         <button v-if="activeEmotionMain || activeEmotion"
           class="px-3 py-1 text-xs rounded-full border border-qianhui/30 text-qianhui hover:bg-black/5 transition-all"
           @click="activeEmotionMain = ''; activeEmotion = ''; load()">清除情感</button>
-      </div>
-      <!-- 二级情感 -->
-      <div v-if="emotionSubs.length" class="flex flex-wrap gap-1.5">
-        <button v-for="s in emotionSubs" :key="s"
-          class="px-3 py-1 text-xs rounded-full border transition-all"
-          :class="activeEmotion === s ? 'text-white' : 'hover:bg-black/5'"
-          :style="activeEmotion === s
-            ? { background: emotionColor(activeEmotionMain), borderColor: emotionColor(activeEmotionMain) }
-            : { borderColor: emotionColor(activeEmotionMain) + '44', color: emotionColor(activeEmotionMain) }"
-          @click="activeEmotion = activeEmotion === s ? '' : s; load()">
-          {{ s }}
-        </button>
       </div>
     </div>
 
@@ -90,6 +84,7 @@ const subCategories = {
   '人造物类': ['建筑空间', '生活器物', '服饰装饰', '交通工具', '城市与文化空间'],
   '虚拟类': ['神仙仙境', '神话传说', '鬼怪灵异', '宗教', '概念'],
 }
+const filterMode = ref('category')  // 'category' | 'emotion'
 const activeCategory = ref('')
 const activeSub = ref('')
 const keyword = ref('')
@@ -127,7 +122,7 @@ async function load() {
     if (data.emotion_tree) emotionTree.value = data.emotion_tree
     // 前端按二级类目过滤
     items.value = activeSub.value
-      ? data.items.filter((c) => c.category_sub === activeSub.value)
+      ? data.items.filter((c) => (c.category_sub || '').split(/\s+/).includes(activeSub.value))
       : data.items
   } finally {
     loading.value = false

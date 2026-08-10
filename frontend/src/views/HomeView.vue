@@ -78,18 +78,45 @@
       <div class="max-w-6xl mx-auto px-4 py-16">
         <SectionTitle sub="诗画互证 · 前往艺术展厅">艺术品精选</SectionTitle>
         <div v-if="artworks.length" class="grid grid-cols-2 sm:grid-cols-4 gap-5 mt-8">
-          <router-link v-for="(a, i) in artworks" :key="a.id" :to="`/artworks?id=${a.id}`"
+          <div v-for="(a, i) in artworks" :key="a.id" @click="openArtPreview(a)"
             class="card card-hover overflow-hidden cursor-pointer rise-in" :style="{ animationDelay: i * 0.06 + 's' }">
             <img :src="a.thumb_url || a.image_url" :alt="a.name" class="w-full h-40 object-cover" loading="lazy" />
             <div class="p-3">
               <h4 class="font-song font-semibold text-sm truncate">《{{ a.name }}》</h4>
               <p class="text-[11px] text-qianhui mt-0.5">{{ a.dynasty_period || a.dynasty_main }} · {{ a.artist }}</p>
             </div>
-          </router-link>
+          </div>
         </div>
         <p v-else class="py-10 text-center text-qianhui text-sm">艺术品收录中…</p>
       </div>
     </section>
+
+    <!-- 艺术品预览弹窗 -->
+    <Teleport to="body">
+      <div v-if="previewArt" class="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" @click.self="previewArt=null">
+        <div class="bg-xuanzhi rounded-lg max-w-4xl w-full max-h-[90vh] shadow-2xl flex flex-col md:flex-row overflow-hidden relative">
+          <button class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-black/20 hover:bg-black/40 text-moyan/70 text-lg z-10" @click="previewArt=null">&times;</button>
+          <div class="md:w-1/2 bg-black/5 flex items-center justify-center shrink-0">
+            <img :src="previewArt.image_url" :alt="previewArt.name" class="w-full max-h-[60vh] object-contain" />
+          </div>
+          <div class="md:w-1/2 p-6 flex flex-col overflow-y-auto">
+            <h3 class="font-song text-2xl font-bold pr-6">《{{ previewArt.name }}》</h3>
+            <p class="text-sm text-qianhui mt-1">{{ previewArt.dynasty_period || previewArt.dynasty_main }} · {{ previewArt.artist }}</p>
+            <div v-if="previewLoading" class="text-xs text-qianhui mt-4">加载详情中…</div>
+            <div v-else class="grid grid-cols-2 gap-3 mt-4 text-sm">
+              <div class="bg-white/50 rounded p-3"><span class="text-qianhui text-xs">材质</span><p class="mt-0.5">{{ previewArt.material || '—' }}</p></div>
+              <div class="bg-white/50 rounded p-3"><span class="text-qianhui text-xs">尺寸</span><p class="mt-0.5">{{ previewArt.size || '—' }}</p></div>
+            </div>
+            <div class="mt-4" v-if="previewArt.description && !previewLoading">
+              <span class="text-xs text-qianhui tracking-widest">作品介绍</span>
+              <p class="text-sm leading-7 mt-2 text-moyan/85 whitespace-pre-line line-clamp-6">{{ previewArt.description }}</p>
+            </div>
+            <div class="flex-1"></div>
+            <router-link :to="`/artworks?id=${previewArt.id}`" class="btn-primary mt-4 text-center" @click="previewArt=null">在艺术展厅中查看</router-link>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <!-- 诗意图鉴入口 -->
     <section class="max-w-6xl mx-auto px-4 py-14">
@@ -210,7 +237,7 @@
 
 <script setup>
 import { onMounted, ref } from 'vue'
-import { getArtworkList, getConceptList } from '../api'
+import { getArtworkDetail, getArtworkList, getConceptList } from '../api'
 import ConceptCard from '../components/ConceptCard.vue'
 import ParticleCanvas from '../components/ParticleCanvas.vue'
 import SectionTitle from '../components/SectionTitle.vue'
@@ -219,6 +246,13 @@ const concepts = ref([])        // 当前展示的6个精选
 const featuredPool = ref([])     // 全部精选池
 const allConcepts = ref([])
 const artworks = ref([])
+const previewArt = ref(null)
+const previewLoading = ref(false)
+async function openArtPreview(a) {
+  previewArt.value = a; previewLoading.value = true
+  try { const d = await getArtworkDetail(a.id); if (d) previewArt.value = { ...a, ...d } } catch {}
+  finally { previewLoading.value = false }
+}
 const loading = ref(true)
 const lastIndices = ref([])      // 上一批展示的索引，避免重复
 

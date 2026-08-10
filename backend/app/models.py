@@ -92,6 +92,7 @@ class Artwork(Base):
     image_url: Mapped[str] = mapped_column(String(512), default="")
     thumb_url: Mapped[str] = mapped_column(String(512), default="")
     description: Mapped[str] = mapped_column(Text, default="")
+    is_featured: Mapped[bool] = mapped_column(Boolean, default=False)  # 首页艺术品精选
 
     concept_rels: Mapped[list["ConceptArtworkRel"]] = relationship(back_populates="artwork", cascade="all, delete-orphan")
 
@@ -127,6 +128,9 @@ class ConceptRelation(Base):
     npmi: Mapped[float] = mapped_column(Float, default=0.0)            # 归一化点互信息 [-1, 1]
     diaphaneity: Mapped[float] = mapped_column(Float, default=0.2)     # 线条透明度（0.2 为最低值）
     verse: Mapped[str] = mapped_column(String(255), default="")        # 共现例句
+    poem_title: Mapped[str] = mapped_column(String(128), default="")   # 诗歌题目
+    poet: Mapped[str] = mapped_column(String(64), default="")          # 诗人
+    dynasty: Mapped[str] = mapped_column(String(32), default="")       # 朝代
 
 
 class CooccurrenceStat(Base):
@@ -144,6 +148,9 @@ class CooccurrenceStat(Base):
     diaphaneity: Mapped[float] = mapped_column(Float, default=0.2)
     verse: Mapped[str] = mapped_column(String(255), default="")
     description: Mapped[str] = mapped_column(Text, default="")
+    poem_title: Mapped[str] = mapped_column(String(128), default="")   # 诗歌题目
+    poet: Mapped[str] = mapped_column(String(64), default="")          # 诗人
+    dynasty: Mapped[str] = mapped_column(String(32), default="")       # 朝代
 
 
 class EmotionStat(Base):
