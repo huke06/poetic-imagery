@@ -29,7 +29,7 @@
           class="appearance-none pl-3 pr-8 py-1.5 rounded-full border cursor-pointer transition-all focus:outline-none"
           :class="subject ? 'border-shiqing bg-shiqing/10 text-shiqing font-semibold' : 'border-shiqing/40 text-shiqing'">
           <option value="">全部主题</option>
-          <option v-for="s in filters.subjects" :key="s" :value="s">{{ s }}</option>
+          <option v-for="s in filters.subjects" :key="s" :value="s">{{ s.replace(/\n/g, ' · ') }}</option>
         </select>
         <svg class="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none text-shiqing" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
       </div>
@@ -181,7 +181,7 @@ function updateLens(e) {
   const rect = zoomBox.value.getBoundingClientRect()
   lens.value.x = e.clientX - rect.left
   lens.value.y = e.clientY - rect.top
-  // 透镜补偿：对齐鼠标位置与放大区域
+  // 透镜补偿：ox = 2.5*(cx-mx) + 1.5*px
   const cx = rect.width / 2, cy = rect.height / 2
   lens.value.ox = 2.5 * (cx - lens.value.x) + 1.5 * pan.value.x
   lens.value.oy = 2.5 * (cy - lens.value.y) + 1.5 * pan.value.y
@@ -198,7 +198,7 @@ async function load() {
   try {
     // 首屏快速加载，后续增量追加
     let page = 1
-    const data = await getArtworkList({ dynasty: dynasty.value, subject: subject.value, keyword: keyword.value, page, page_size: 50 })
+    const data = await getArtworkList({ dynasty: dynasty.value, subject: subject.value, keyword: keyword.value, page, page_size: 200 })
     items.value = data.items
     filters.value = data.filters
     totalCount.value = data.filters.dynasties.reduce((s, d) => s + d.count, 0)
@@ -206,7 +206,7 @@ async function load() {
     // 后台加载剩余
     while (data.items.length >= 50) {
       page++
-      const more = await getArtworkList({ dynasty: dynasty.value, subject: subject.value, keyword: keyword.value, page, page_size: 50 })
+      const more = await getArtworkList({ dynasty: dynasty.value, subject: subject.value, keyword: keyword.value, page, page_size: 200 })
       items.value = [...items.value, ...more.items]
     }
   } catch { loading.value = false }

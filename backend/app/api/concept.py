@@ -765,7 +765,13 @@ def concept_cooccurrence(concept_id: int, limit: int = Query(24, ge=1, le=60),
             }
 
     # ── 排序取 top N，构建节点 ──
-    edges = sorted(edges_map.values(), key=lambda x: (x["npmi"], x["same_poem"]), reverse=True)[:limit]
+    sorted_edges = sorted(edges_map.values(), key=lambda x: (x["npmi"], x["same_poem"]), reverse=True)
+    edges = sorted_edges[:limit]
+    # 桥接词始终保留（不被排序截断）
+    bridge_others = {e["other"] for e in sorted_edges if e.get("source") == "bridge_node"}
+    for e in sorted_edges[limit:]:
+        if e.get("source") == "bridge_node" or e.get("bridge_word") in bridge_others:
+            edges.append(e)
     other_names = [e["other"] for e in edges]
     name2concept = {}
     for cc in db.query(Concept).filter(Concept.name.in_(other_names)).all():

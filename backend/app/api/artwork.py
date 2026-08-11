@@ -17,7 +17,7 @@ def artwork_list(
     subject: str = Query("", description="主题筛选"),
     keyword: str = Query("", description="名称/作者关键词"),
     featured: str = Query("", description="传任意非空值即仅返回首页精选艺术品"),
-    page: int = Query(1, ge=1), page_size: int = Query(12, ge=1, le=50),
+    page: int = Query(1, ge=1), page_size: int = Query(12, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
     q = db.query(Artwork)
