@@ -1,4 +1,5 @@
 """FastAPI 应用入口"""
+import threading
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -37,6 +38,19 @@ app.include_router(agent.router)
 app.include_router(admin.router)
 
 
+def _run_vector_index_backfill():
+    """后台线程构建向量索引（为空时惰性构建，不阻塞启动）"""
+    from .database import SessionLocal
+    from .service import embedding_index
+    db = SessionLocal()
+    try:
+        embedding_index.build_index(db, force=False)
+    except Exception:
+        pass
+    finally:
+        db.close()
+
+
 @app.on_event("startup")
 def startup():
     from .database import engine
@@ -44,6 +58,7 @@ def startup():
     run_migrations(engine)
     init_db()
     _run_backfill()
+    threading.Thread(target=_run_vector_index_backfill, daemon=True).start()
 
 
 def _run_backfill():

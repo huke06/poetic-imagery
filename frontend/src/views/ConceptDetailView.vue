@@ -134,30 +134,12 @@
                 探索 <span class="ml-0.5">⤢</span>
               </button>
             </div>
-            <VChart v-if="coocOption" :option="coocOption" height="520px" @click="onCoocClick" />
+            <CooccurrenceMiniGraph v-if="cooc.edges?.length" :data="cooc" :theme-color="detail.theme_color" />
             <p v-else class="text-sm text-qianhui/70 py-8 text-center">暂无共现分析数据</p>
           </div>
-          <div v-if="cooc.edges?.length" class="flex gap-3 text-[10px] text-qianhui/70 border-t border-black/5 pt-2">
-            <div class="flex items-center gap-1.5 bg-white/80 rounded px-2 py-1">
-              <span class="inline-block w-8 h-0.5 rounded" style="background:#2B4C7E;height:3px"></span>
-              <span>强</span>
-              <span class="inline-block w-8 rounded" style="background:#2B4C7E;height:1px"></span>
-              <span>弱</span>
-              <span class="ml-1">NPMI</span>
-            </div>
-            <div class="flex items-center gap-1.5 bg-white/80 rounded px-2 py-1">
-              <span class="inline-block w-5 border-t border-[#2B4C7E]" style="border-style:solid"></span>
-              <span>句内</span>
-              <span class="inline-block w-5 border-t border-[#2B4C7E]" style="border-style:dashed"></span>
-              <span>跨句</span>
-              <span class="inline-block w-5 border-t border-[#2B4C7E]" style="border-style:dotted"></span>
-              <span>全诗</span>
-            </div>
-            <div class="flex items-center gap-1.5 bg-white/80 rounded px-2 py-1">
-              <span class="inline-block w-6 border-t border-[#b0b0b0] opacity-40" style="border-style:dashed;border-width:1px"></span>
-              <span class="text-qianhui/50">桥接</span>
-            </div>
-          </div>
+          <p v-if="cooc.edges?.length" class="mt-3 text-[11px] text-qianhui/60 leading-5">
+            线粗 = NPMI 强度 · 实线句内 / 虚线跨句 / 点线全诗 · 灰线桥接 · 点击节点进入对应意象
+          </p>
         </div>
       </div>
     </section>
@@ -319,25 +301,13 @@
     <!-- ═══ 7. 扩展工具 ═══ -->
     <section class="card p-6 flex flex-wrap items-center gap-4">
       <span class="text-sm text-qianhui tracking-widest mr-2">扩展工具</span>
-      <a :href="shareCardUrl(detail.id)" target="_blank" class="btn-outline !py-1.5 !px-4 !text-xs">生成分享卡片</a>
+      <router-link :to="'/share/concept/' + detail.id" class="btn-outline !py-1.5 !px-4 !text-xs">生成分享卡片</router-link>
       <router-link to="/agent" class="btn-outline !py-1.5 !px-4 !text-xs">前往灵犀助手</router-link>
       <router-link :to="`/artworks`" class="btn-outline !py-1.5 !px-4 !text-xs">前往艺术展厅</router-link>
     </section>
 
     <!-- 共现图谱全屏 -->
-    <Teleport to="body">
-      <Transition name="fade">
-        <div v-if="showExplorer" class="fixed inset-0 z-[70] flex flex-col" style="background: rgba(20,26,38,0.95)" @click.self="showExplorer = false">
-          <div class="flex items-center justify-between px-6 py-4 text-xuanzhi">
-            <span class="seal">共现</span>
-            <h3 class="font-song text-xl font-bold">「{{ detail?.name }}」共现图谱</h3>
-            <p class="text-xs text-xuanzhi/60">线粗=NPMI · 实线句内/虚线跨句/点线全诗 · 灰弧虚线=桥接</p>
-            <button class="w-10 h-10 rounded-full bg-white/10 hover:bg-white/25 text-xl transition-all" @click="showExplorer = false">×</button>
-          </div>
-          <VChart v-if="coocExplorerOption" :option="coocExplorerOption" width="100%" height="calc(100vh - 80px)" />
-        </div>
-      </Transition>
-    </Teleport>
+    <CooccurrenceExplorer :show="showExplorer" :data="cooc" :theme-color="detail?.theme_color || '#2B4C7E'" @close="showExplorer = false" />
 
     <!-- 返回顶部 -->
     <BackToTop />
@@ -404,16 +374,18 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   agentAsk, agentCompose, getConceptArtworks, getConceptDetail, getConceptPoetries,
-  getConceptUsageSpectrum, shareCardUrl,
+  getConceptUsageSpectrum,
 } from '../api'
 import { getConceptCooccurrence, getUsageSummary } from '../api'
 import { getArtworkDetail } from '../api'
 import { useExploredImageries } from '../composables/useExploredImageries'
 import BackToTop from '../components/BackToTop.vue'
+import CooccurrenceExplorer from '../components/CooccurrenceExplorer.vue'
+import CooccurrenceMiniGraph from '../components/CooccurrenceMiniGraph.vue'
 import Pagination from '../components/Pagination.vue'
 import ParticleCanvas from '../components/ParticleCanvas.vue'
 import SectionTitle from '../components/SectionTitle.vue'
@@ -437,6 +409,10 @@ const showExplorer = ref(false)
 const activeArtwork = ref(null)
 const activeArtworkRel = ref('')
 const artFullscreen = ref(false)
+
+// 打开艺术作品详情卡片时锁定背景滚动，避免鼠标在卡片外滚动导致页面跟着滚动
+watch(activeArtwork, (v) => { document.body.style.overflow = v ? 'hidden' : '' })
+watch(artFullscreen, (v) => { if (v) document.body.style.overflow = 'hidden' })
 
 // 用法谱系
 const spectrum = ref([])
@@ -539,139 +515,6 @@ const dynastyOption = computed(() => {
     }],
   }
 })
-
-// ═══ 共现图谱全屏（与缩略同数据，放大力导向） ═══
-const coocExplorerOption = computed(() => {
-  if (!cooc.value.edges?.length) return null
-  const color = detail.value?.theme_color || '#2B4C7E'
-  const dashOf = (t) => (t === '句内' ? 'solid' : t === '跨句' ? 'dashed' : 'dotted')
-  return {
-    tooltip: {
-      confine: true,
-      backgroundColor: '#F5F1E8',
-      borderColor: '#c8c0b0',
-      borderWidth: 1,
-      padding: 0,
-      extraCssText: 'max-width:400px;box-shadow:0 8px 30px rgba(0,0,0,0.15);white-space:normal;word-break:break-word',
-      textStyle: { color: '#4a4a4a', fontSize: 12, fontFamily: 'Kaiti SC, KaiTi, serif' },
-      formatter: (p) => {
-        if (p.dataType === 'edge') {
-          return '<div style="padding:10px 14px"><div style="font-size:12px;font-weight:700;color:#2C2C2C">' + p.data.name + '</div><div style="font-size:10px;color:#999;margin-top:2px">NPMI ' + p.data.npmi.toFixed(2) + ' · ' + (p.data.ctype || '共现') + '</div></div>'
-        }
-        // 桥接词：有来自中心的包含边则只显示标签
-        const isBridge = cooc.value.edges.some(e => e.target === p.data.id && e.relation_type === '包含')
-        if (isBridge) return '<div style="padding:10px 14px"><b style="font-size:14px;font-family:Kaiti SC,KaiTi,serif">' + p.data.name + '</b><div style="font-size:10px;color:#aaa;margin-top:2px">桥接词</div></div>'
-        const nodeEdges = cooc.value.edges.filter(e => (e.target === p.data.id || e.source === p.data.id) && e.relation_type !== '包含')
-        if (!nodeEdges.length) return '<div style="padding:10px 14px"><b>' + p.data.name + '</b></div>'
-        const edge = nodeEdges[0]
-        const verse = (edge && edge.verse) || ''
-        const desc = (edge && edge.description) || ''
-        const poet = (edge && edge.poet) || ''
-        const dynasty = (edge && edge.dynasty) || ''
-        const poemTitle = (edge && edge.poem_title) || ''
-        if (!verse && !desc) return '<div style="padding:12px 16px"><b style="font-size:15px;font-family:Kaiti SC,KaiTi,serif">' + p.data.name + '</b></div>'
-        var h = '<div style="padding:14px 16px;min-width:240px;max-width:400px">'
-        h += '<div style="font-size:15px;font-family:Kaiti SC,KaiTi,serif;font-weight:700;color:#2C2C2C;margin-bottom:4px">' + p.data.name + '</div>'
-        if (poet || dynasty) {
-          h += '<div style="font-size:10px;color:#999;margin-bottom:6px">'
-          if (dynasty) h += dynasty
-          if (dynasty && poet) h += ' · '
-          if (poet) h += poet
-          if (poemTitle) h += ' 《' + poemTitle + '》'
-          h += '</div>'
-        }
-        if (verse) {
-          h += '<div style="background:rgba(0,0,0,0.015);border-radius:4px;padding:10px 12px;margin-bottom:6px;border-left:3px solid ' + color + '">'
-          h += '<div style="font-size:13px;line-height:2.2;color:#3a3a3a;font-family:Kaiti SC,KaiTi,serif">'
-          // 自动断行：先处理换行符（真实换行 + 字面量 \n），再按标点/诗行切分
-          var formattedVerse = verse.replace(/\\n/g, '<br>').replace(/\n/g, '<br>')
-          if (formattedVerse.indexOf('<br>') === -1 && !/[。！？；]/.test(verse)) {
-            var step = verse.length % 7 === 0 ? 7 : (verse.length % 5 === 0 ? 5 : 0)
-            if (step) {
-              var parts = verse.match(new RegExp('.{1,' + step + '}', 'g'))
-              formattedVerse = parts ? parts.join('<br>') : formattedVerse
-            }
-          }
-          h += formattedVerse
-          h += '</div></div>'
-        }
-        if (desc) {
-          h += '<div>'
-          h += '<div style="font-size:9px;color:#999;margin-bottom:1px;letter-spacing:2px">共现解读</div>'
-          h += '<div style="font-size:11px;color:#777;line-height:1.6;word-break:break-all">' + desc + '</div>'
-          h += '</div>'
-        }
-        h += '</div>'
-        return h
-      },
-    },
-    series: [{
-      type: 'graph', layout: 'force', roam: true, draggable: true,
-      force: { repulsion: 400, edgeLength: 150, gravity: 0.18 },
-      label: { show: true, fontSize: 16, fontFamily: 'Kaiti SC, KaiTi, serif', color: '#F5F1E8' },
-      data: cooc.value.nodes.map((n) => ({
-        id: n.id, name: n.name, concept_id: n.concept_id,
-        is_bridge: n.is_bridge || false,
-        symbolSize: n.center ? 80 : 52,
-        itemStyle: { color: n.center ? color : (n.theme_color || '#8A6D3B'), borderColor: '#F5F1E8', borderWidth: 2, shadowBlur: 8, shadowColor: '#0003' },
-      })),
-      links: cooc.value.edges.map((e) => {
-        const isBridge = e.relation_type === '包含'
-        return {
-          source: e.source, target: e.target, name: e.name, npmi: e.npmi, ctype: e.type, concept_id: e.concept_id,
-          lineStyle: isBridge
-            ? { color: '#b0b0b0', width: 0.8, type: 'dashed', opacity: 0.4, curveness: 0.25 }
-            : { color, width: 1 + ((e.npmi + 1) / 2) * 5, type: dashOf(e.type), opacity: e.diaphaneity, curveness: 0.08 },
-        }
-      }),
-    }],
-  }
-})
-
-// ═══ 共现图谱（缩略，ECharts 力导向） ═══
-const coocOption = computed(() => {
-  if (!cooc.value.edges?.length) return null
-  const color = detail.value?.theme_color || '#2B4C7E'
-  const dashOf = (t) => (t === '句内' ? 'solid' : t === '跨句' ? 'dashed' : 'dotted')
-  return {
-    tooltip: {
-      formatter: (p) => p.dataType === 'edge'
-        ? `${p.data.name} · NPMI ${p.data.npmi.toFixed(2)} · ${p.data.ctype}` : p.data.name,
-    },
-    legend: { show: false },
-    series: [{
-      type: 'graph', layout: 'force', roam: false, draggable: true,
-      force: {
-        repulsion: Math.max(260, 580 - cooc.value.nodes.length * 6),
-        edgeLength: [80, 220],
-        gravity: 0.32,
-        layoutAnimation: true,
-      },
-      label: { show: true, fontSize: 13, fontFamily: 'Kaiti SC, KaiTi, serif', color: '#F5F1E8' },
-      data: cooc.value.nodes.map((n) => ({
-        id: n.id, name: n.name, concept_id: n.concept_id,
-        is_bridge: n.is_bridge || false,
-        symbolSize: n.center ? 64 : Math.max(28, 50 - cooc.value.nodes.length),
-        itemStyle: { color: n.center ? color : (n.theme_color || '#8A6D3B'), borderColor: '#F5F1E8', borderWidth: 2, shadowBlur: 6, shadowColor: '#0003' },
-      })),
-      links: cooc.value.edges.map((e) => {
-        const isBridge = e.relation_type === '包含'
-        return {
-          source: e.source, target: e.target, name: e.name, npmi: e.npmi, ctype: e.type, concept_id: e.concept_id,
-          lineStyle: isBridge
-            ? { color: '#b0b0b0', width: 0.8, type: 'dashed', opacity: 0.4, curveness: 0.25 }
-            : { color, width: 1 + ((e.npmi + 1) / 2) * 5, type: dashOf(e.type), opacity: e.diaphaneity, curveness: 0.08 },
-        }
-      }),
-    }],
-  }
-})
-
-function onCoocClick(params) {
-  if (params.dataType === 'node' && params.data.concept_id && !params.data.is_bridge && params.data.concept_id !== conceptId) {
-    router.push(`/concept/${params.data.concept_id}`)
-  }
-}
 
 // ═══ 词云数据 ═══
 const emotionCloudWords = computed(() => {
@@ -808,6 +651,7 @@ const aiMsgs = ref([])
 const aiQuestion = ref('')
 const aiSending = ref(false)
 const aiMsgBox = ref(null)
+const aiHistory = ref([])   // 多轮对话历史
 const presetQuestions = computed(() => [
   `「${detail.value?.name}」在古诗词中有哪些核心含义？`,
   `哪些诗人最爱用「${detail.value?.name}」意象？`,
@@ -819,10 +663,12 @@ async function askAI(q) {
   aiMsgs.value.push({ id: Date.now(), role: 'user', text: question })
   aiQuestion.value = ''
   aiSending.value = true
+  aiHistory.value.push({ role: 'user', content: question })
   await nextTick(); scrollAi()
   try {
-    const resp = await agentAsk(question)
+    const resp = await agentAsk(question, aiHistory.value.slice(-8))
     aiMsgs.value.push({ id: Date.now() + 1, role: 'ai', text: resp.answer || '暂无回答' })
+    aiHistory.value.push({ role: 'ai', content: resp.answer || '' })
   } catch { aiMsgs.value.push({ id: Date.now() + 1, role: 'ai', text: '服务暂不可用，请稍后再试。' }) }
   finally { aiSending.value = false; await nextTick(); scrollAi() }
 }

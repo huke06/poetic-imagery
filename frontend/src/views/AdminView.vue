@@ -54,11 +54,26 @@
                   <span :class="overview?.llm_configured ? 'text-zhuqing' : 'text-zheshi'">{{ overview?.llm_configured ? '已配置（LLM 生成）' : '未配置（本地知识库生成）' }}</span>
                 </div>
                 <div class="flex justify-between"><span class="text-qianhui">数据库</span><span>SQLite 单文件</span></div>
+                <div class="flex justify-between items-center"><span class="text-qianhui">向量索引</span>
+                  <span class="text-xs" :class="viStatus?.available ? 'text-zhuqing' : 'text-qianhui'">
+                    {{ viStatus ? (viStatus.available ? '已就绪' : '未配置') : '…' }}
+                  </span>
+                </div>
+                <div v-if="viStatus?.available" class="text-xs text-qianhui/70">意象 {{ viStatus.concepts }} · 名句 {{ viStatus.clauses }}</div>
               </div>
-              <button class="btn-outline !py-1.5 !text-xs mt-4" :disabled="recomputing" @click="doRecompute">
-                {{ recomputing ? '重算中…' : '重算朝代统计' }}
-              </button>
+              <div class="flex flex-wrap items-center gap-2 mt-4">
+                <button class="btn-outline !py-1.5 !text-xs" :disabled="recomputing" @click="doRecompute">
+                  {{ recomputing ? '重算中…' : '重算朝代统计' }}
+                </button>
+                <button class="btn-outline !py-1.5 !text-xs" :disabled="viBusy" @click="doViRefresh">
+                  {{ viBusy === 'refresh' ? '刷新中…' : '增量刷新索引' }}
+                </button>
+                <button class="btn-outline !py-1.5 !text-xs !border-amber-500/60 !text-amber-600" :disabled="viBusy" @click="doViRebuild">
+                  {{ viBusy === 'rebuild' ? '重建中…' : '重建向量索引' }}
+                </button>
+              </div>
               <span v-if="recomputeMsg" class="text-xs text-zhuqing ml-2">{{ recomputeMsg }}</span>
+              <span v-if="viMsg" class="text-xs text-zhuqing">{{ viMsg }}</span>
             </div>
           </div>
         </div>
@@ -81,7 +96,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  adminOverview, getToken, recomputeStats, setToken as saveToken,
+  adminOverview, adminVectorIndexRefresh, adminVectorIndexRebuild, adminVectorIndexStatus,
+  getToken, recomputeStats, setToken as saveToken,
 } from '../api'
 import SectionTitle from '../components/SectionTitle.vue'
 import ArtworkPanel from '../components/admin/ArtworkPanel.vue'
@@ -114,6 +130,9 @@ const loginErr = ref('')
 const overview = ref(null)
 const recomputing = ref(false)
 const recomputeMsg = ref('')
+const viStatus = ref(null)
+const viBusy = ref(null)   // 'refresh' | 'rebuild' | null
+const viMsg = ref('')
 
 const statCards = computed(() => overview.value ? [
   { label: '意象', value: overview.value.concepts, color: '#2B4C7E' },
@@ -149,12 +168,42 @@ async function doRecompute() {
   }
 }
 
+async function loadViStatus() {
+  try {
+    viStatus.value = await adminVectorIndexStatus()
+  } catch { viStatus.value = null }
+}
+
+async function doViRefresh() {
+  viBusy.value = 'refresh'
+  viMsg.value = ''
+  try {
+    const d = await adminVectorIndexRefresh()
+    viMsg.value = '已增量刷新：意象+' + (d.concepts_added ?? 0) + ' · 名句+' + (d.clauses_added ?? 0)
+    await loadViStatus()
+  } catch (e) { viMsg.value = '刷新失败：' + e.message }
+  finally { viBusy.value = null }
+}
+
+async function doViRebuild() {
+  if (!confirm('全量重建会重新向量化所有条目并消耗 token，确定？')) return
+  viBusy.value = 'rebuild'
+  viMsg.value = ''
+  try {
+    const d = await adminVectorIndexRebuild()
+    viMsg.value = '已重建：意象 ' + d.concepts + ' · 名句 ' + d.clauses
+    await loadViStatus()
+  } catch (e) { viMsg.value = '重建失败：' + e.message }
+  finally { viBusy.value = null }
+}
+
 onMounted(async () => {
   if (route.query.tab && tabs.some((t) => t.key === route.query.tab)) tab.value = route.query.tab
   if (getToken()) {
     try {
       overview.value = await adminOverview()
       authed.value = true
+      loadViStatus()
     } catch { saveToken('') }
   }
 })

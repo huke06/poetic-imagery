@@ -110,6 +110,33 @@ def overview(db: Session = Depends(get_db)):
     })
 
 
+# ═══════════ 向量索引（ChromaDB）═══════════════════════
+@router.get("/vector-index/status", dependencies=[Depends(check_token)])
+def vector_index_status(db: Session = Depends(get_db)):
+    from ..service import embedding_index, vector_store
+    from ..utils import embedding as emb
+    return ApiResp(data={
+        "available": emb.embedding_available(),
+        "model": settings.EMBEDDING_MODEL,
+        "concepts": vector_store.collection_count(embedding_index.CONCEPTS_COLL),
+        "clauses": vector_store.collection_count(embedding_index.CLAUSES_COLL),
+    })
+
+
+@router.post("/vector-index/rebuild", dependencies=[Depends(check_token)])
+def rebuild_vector_index(db: Session = Depends(get_db)):
+    """全量重建向量索引（会重新向量化所有条目，消耗 token）"""
+    from ..service import embedding_index
+    return ApiResp(data=embedding_index.build_index(db, force=True))
+
+
+@router.post("/vector-index/refresh", dependencies=[Depends(check_token)])
+def refresh_vector_index(db: Session = Depends(get_db)):
+    """增量刷新向量索引（仅新增/变更条目重新向量化）"""
+    from ..service import embedding_index
+    return ApiResp(data=embedding_index.refresh_incremental(db))
+
+
 # ═══════════ 系统配置（热生效） ═══════════
 @router.get("/config", dependencies=[Depends(check_token)])
 def get_config():
@@ -143,6 +170,15 @@ def palette(name: str = "", category: str = ""):
     return ApiResp(data=data)
 
 
+def _schedule_index_refresh():
+    """数据变更后调度一次后台增量向量刷新（去抖）"""
+    try:
+        from ..service import embedding_index
+        embedding_index.schedule_incremental_refresh()
+    except Exception:
+        pass
+
+
 # ═══════════ 意象 CRUD ═══════════
 @router.post("/concept", dependencies=[Depends(check_token)])
 def create_concept(req: ConceptUpsert, db: Session = Depends(get_db)):
@@ -159,6 +195,7 @@ def create_concept(req: ConceptUpsert, db: Session = Depends(get_db)):
     obj = Concept(**payload)
     db.add(obj)
     db.commit()
+    _schedule_index_refresh()
     return ApiResp(data={"id": obj.id, "theme_color": obj.theme_color})
 
 
@@ -248,6 +285,7 @@ def create_poetry(req: PoetryUpsert, db: Session = Depends(get_db)):
     for r in req.rels:
         db.add(ConceptPoetryRel(poetry_id=obj.id, **r.model_dump()))
     db.commit()
+    _schedule_index_refresh()
     return ApiResp(data={"id": obj.id})
 
 
@@ -265,6 +303,7 @@ def update_poetry(poetry_id: int, req: PoetryUpsert, db: Session = Depends(get_d
     for r in req.rels:
         db.add(ConceptPoetryRel(poetry_id=obj.id, **r.model_dump()))
     db.commit()
+    _schedule_index_refresh()
     return ApiResp(data={"id": obj.id})
 
 
@@ -275,6 +314,7 @@ def delete_poetry(poetry_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "诗文不存在")
     db.delete(obj)
     db.commit()
+    _schedule_index_refresh()
     return ApiResp()
 
 
@@ -301,7 +341,7 @@ def _artwork_full(a: Artwork, db: Session) -> dict:
             "dynasty_main": a.dynasty_main,
             "material": a.material, "size": a.size, "subject_names": a.subject_names,
             "description": a.description, "image_url": a.image_url, "thumb_url": a.thumb_url,
-            "source_work_id": a.source_work_id, "rels": rels}
+            "source_work_id": a.source_work_id, "is_featured": bool(a.is_featured), "rels": rels}
 
 
 @router.get("/artwork/list", dependencies=[Depends(check_token)])
@@ -367,6 +407,17 @@ def toggle_artwork_featured(artwork_id: int, concept_id: int = Query(...), featu
     rel.is_featured = featured
     db.commit()
     return ApiResp(data={"rel_id": rel.id, "is_featured": rel.is_featured})
+
+
+@router.post("/artwork/{artwork_id}/home-feature", dependencies=[Depends(check_token)])
+def toggle_artwork_home_featured(artwork_id: int, featured: bool = Query(...), db: Session = Depends(get_db)):
+    """切换「首页艺术品精选」状态（Artwork.is_featured，供首页滚动封面/精选区使用）"""
+    obj = db.get(Artwork, artwork_id)
+    if not obj:
+        raise HTTPException(404, "艺术品不存在")
+    obj.is_featured = featured
+    db.commit()
+    return ApiResp(data={"id": obj.id, "is_featured": bool(obj.is_featured)})
 
 
 @router.delete("/artwork/{artwork_id}", dependencies=[Depends(check_token)])
@@ -628,6 +679,13 @@ async def import_file(files: list[UploadFile], dry_run: bool = Query(False), db:
                 for pack in packs:
                     reports.append(importer.import_concept_data(db, pack))
         db.commit()
+
+        # 自动增量刷新向量索引（后台异步，仅对新增/变更条目向量化）
+        try:
+            from ..service import embedding_index
+            embedding_index.schedule_incremental_refresh()
+        except Exception:
+            pass
 
         # 自动触发诗文角色分析（后台异步，不阻塞导入响应）
         import threading

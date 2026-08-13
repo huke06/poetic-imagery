@@ -47,22 +47,19 @@
                 <div v-if="m.role === 'user'" class="bg-shiqing text-white px-4 py-2.5 rounded-2xl rounded-tr-sm text-sm leading-7 shadow-card">
                   {{ m.text }}
                 </div>
-                <div v-else class="bg-white/80 px-5 py-4 rounded-2xl rounded-tl-sm shadow-card border border-black/5">
-                  <div v-if="m.source === 'llm' || m.source === 'llm_free'" class="text-sm leading-7 text-moyan/90 markdown-body" v-html="md(m.text)"></div>
-                  <p v-else class="text-sm leading-7 whitespace-pre-wrap text-moyan/90">{{ m.text }}</p>
-                  <!-- 引用 -->
-                  <div v-if="m.references?.poetries?.length" class="mt-4 pt-3 border-t border-black/5 flex flex-wrap gap-1.5">
-                    <button v-for="p in m.references.poetries" :key="p.poetry_id"
-                      class="tag border-shiqing/30 text-shiqing hover:bg-shiqing hover:text-white transition-colors cursor-pointer text-xs"
-                      @click="$router.push('/poetry/' + p.poetry_id)">
-                      《{{ p.title }}》
-                    </button>
-                  </div>
-                  <div v-if="m.references?.concepts?.length" class="mt-2 flex gap-1.5">
-                    <router-link v-for="c in m.references.concepts" :key="c.id" :to="'/concept/' + c.id"
-                      class="tag border-zhuqing/40 text-zhuqing hover:bg-zhuqing hover:text-white transition-colors !text-[10px]">
-                      {{ c.name }}
-                    </router-link>
+                <div v-else class="bg-white/80 px-5 py-4 rounded-2xl rounded-tl-sm shadow-card border border-black/5" @click="onCiteClick($event, m)">
+                  <div class="text-sm leading-7 text-moyan/90 whitespace-pre-wrap" v-html="renderAnswer(m.text)"></div>
+                  <div v-if="refCards(m).length" class="mt-4 pt-3 border-t border-black/5">
+                    <div class="text-[10px] text-qianhui tracking-widest mb-1.5">参考出处</div>
+                    <div v-for="c in refCards(m)" :key="c.key"
+                      :id="c.idx != null ? 'cite-' + m.id + '-' + c.idx : null"
+                      class="cite-card flex items-center gap-2 text-xs cursor-pointer rounded px-2 py-1.5 -mx-1 hover:bg-black/5 transition-colors"
+                      @click="$router.push(c.to)">
+                      <span v-if="c.idx != null" class="cite-badge shrink-0">[{{ c.idx }}]</span>
+                      <span class="font-song truncate" :class="c.kind === 'concept' ? 'text-zhuqing' : c.kind === 'artwork' ? 'text-zheshi' : 'text-shiqing'">{{ c.label }}</span>
+                      <span class="text-[10px] text-qianhui/70 truncate">{{ c.sub }}</span>
+                      <span class="ml-auto shrink-0 text-[10px] text-qianhui/50">{{ c.kindLabel }}</span>
+                    </div>
                   </div>
                   <p v-if="m.source" class="text-[10px] mt-2" :class="sourceClass(m.source)">{{ sourceLabel(m.source) }}</p>
                 </div>
@@ -70,6 +67,11 @@
             </div>
           </div>
           <div v-if="sending" class="flex"><div class="bg-white/80 px-5 py-3 rounded-2xl rounded-tl-sm shadow-card text-sm text-qianhui">思考中<span class="animate-pulse">&hellip;</span></div></div>
+          <div v-if="suggestions.length && !sending" class="flex flex-wrap gap-2 justify-center pt-1">
+            <button v-for="s in suggestions" :key="s"
+              class="tag border-shiqing/30 text-shiqing hover:bg-shiqing hover:text-white transition-colors cursor-pointer !text-xs !py-1.5 !px-3 !rounded-full"
+              @click="sendAsk(s)">{{ s }}</button>
+          </div>
         </div>
 
         <div class="border-t border-black/5 p-4">
@@ -118,6 +120,7 @@ const selectedConcepts = ref(['月'])
 const styles = ['五言绝句', '七言绝句', '五言律诗', '七言律诗']
 const style = ref('七言绝句')
 const theme = ref('')
+const suggestions = ref([])
 const convs = ref([])
 const activeConv = ref(0)
 
@@ -132,6 +135,7 @@ async function afterSend(data) {
   if (data.message) {
     msgs.value.push({ id: Date.now(), role: 'ai', text: data.message.text, source: data.message.source, references: data.message.references })
   }
+  suggestions.value = data.suggestions || []
   await scrollBottom()
 }
 
@@ -189,14 +193,15 @@ async function sendToServer(payload) {
   return { conversation_id: 0, title: '', message: { id: 0, role: 'ai', text: d.data.answer, source: d.data.source, references: d.data.references || {} } }
 }
 
-async function sendAsk() {
-  const q = question.value.trim()
-  if (!q || sending.value) return
-  msgs.value.push({ id: Date.now(), role: 'user', text: q })
+async function sendAsk(q) {
+  const text = (typeof q === 'string' ? q : question.value).trim()
+  if (!text || sending.value) return
+  msgs.value.push({ id: Date.now(), role: 'user', text })
   question.value = ''
   sending.value = true
+  suggestions.value = []
   await scrollBottom()
-  try { await afterSend(await sendToServer({ mode: 'ask', question: q })) }
+  try { await afterSend(await sendToServer({ mode: 'ask', question: text })) }
   catch { msgs.value.push({ id: Date.now(), role: 'ai', text: '服务暂不可用，请稍后再试。' }) }
   finally { sending.value = false; await scrollBottom() }
 }
@@ -223,12 +228,44 @@ function sourceLabel(s) {
   if (s === 'llm_free') return '✦ DeepSeek 自由回答（未锚定意象库）'
   return '由本地知识库生成'
 }
-function md(text) {
+function renderAnswer(text) {
   if (!text) return ''
-  return '<p>' + text.replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/`(.+?)`/g, '<code class="bg-black/5 px-1 rounded text-xs">$1</code>')
-    .replace(/\n\n/g, '</p><p>').replace(/^- (.+$)/gm, '<li class="ml-4 list-disc">$1</li>') + '</p>'
+  return text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/\n/g, '<br>')
+    .replace(/\[(\d+)\]/g, '<sup class="cite-link" data-cite="$1">[$1]</sup>')
+}
+
+function refCards(m) {
+  const refs = m.references || {}
+  const cards = []
+  const cits = refs.citations
+  if (Array.isArray(cits) && cits.length) {
+    for (const r of cits) {
+      if (r.type === 'poetry') cards.push({ idx: r.idx, kind: 'poetry', kindLabel: '诗文', label: '《' + (r.title || '') + '》', sub: [r.dynasty, r.author].filter(Boolean).join(' · '), to: '/poetry/' + r.poetry_id })
+      else if (r.type === 'concept') cards.push({ idx: r.idx, kind: 'concept', kindLabel: '意象', label: r.name, sub: '意象', to: '/concept/' + r.concept_id })
+      else if (r.type === 'artwork') cards.push({ idx: r.idx, kind: 'artwork', kindLabel: '古画', label: '《' + (r.name || '') + '》', sub: [r.dynasty, r.artist].filter(Boolean).join(' · '), to: '/artworks?id=' + r.artwork_id })
+    }
+    return cards.map((c, i) => ({ ...c, key: 'c' + c.idx + '-' + i }))
+  }
+  for (const p of refs.poetries || []) cards.push({ idx: null, kind: 'poetry', kindLabel: '诗文', label: '《' + (p.title || '') + '》', sub: [p.dynasty, p.author].filter(Boolean).join(' · '), to: '/poetry/' + p.poetry_id })
+  for (const c of refs.concepts || []) cards.push({ idx: null, kind: 'concept', kindLabel: '意象', label: c.name, sub: '意象', to: '/concept/' + c.id })
+  for (const a of refs.artworks || []) cards.push({ idx: null, kind: 'artwork', kindLabel: '古画', label: '《' + (a.name || '') + '》', sub: [a.dynasty, a.artist].filter(Boolean).join(' · '), to: '/artworks?id=' + a.id })
+  return cards.map((c, i) => ({ ...c, key: 'f' + i + '-' + c.to + '-' + c.label }))
+}
+
+function onCiteClick(e, m) {
+  const sup = e.target && e.target.closest ? e.target.closest('.cite-link') : null
+  if (!sup) return
+  const n = sup.getAttribute('data-cite')
+  const el = document.getElementById('cite-' + m.id + '-' + n)
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.classList.add('cite-flash')
+    setTimeout(() => el.classList.remove('cite-flash'), 1800)
+  }
 }
 
 onMounted(async () => {
@@ -239,3 +276,24 @@ onMounted(async () => {
   if (auth.loggedIn && convs.value.length) selectConv(convs.value[0].id)
 })
 </script>
+
+<style scoped>
+.cite-link {
+  color: #2B4C7E; font-weight: 700; cursor: pointer;
+  font-size: 0.75em; vertical-align: super; line-height: 0;
+  padding: 0 1px;
+}
+.cite-link:hover { text-decoration: underline; }
+.cite-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px; padding: 0 4px;
+  border-radius: 5px; font-size: 10px; font-weight: 700;
+  background: rgba(43,76,126,0.1); color: #2B4C7E;
+}
+.cite-card { transition: background 0.15s, box-shadow 0.15s; }
+.cite-flash {
+  background: rgba(43,76,126,0.1) !important;
+  box-shadow: 0 0 0 2px rgba(43,76,126,0.35);
+  border-radius: 6px;
+}
+</style>

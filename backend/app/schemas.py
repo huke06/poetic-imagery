@@ -176,6 +176,7 @@ class RelationGraph(BaseModel):
 # ─────────── 智能问答 ───────────
 class AskReq(BaseModel):
     question: str = Field(..., min_length=1, max_length=500)
+    history: list[dict] = Field(default_factory=list)  # [{"role":"user"|"ai","content":"..."}] 多轮对话历史
 
 
 class AskResp(BaseModel):

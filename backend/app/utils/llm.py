@@ -22,7 +22,7 @@ def llm_available() -> bool:
     return bool(api_key)
 
 
-def chat(messages: list[dict], temperature: float = 0.7, timeout: float = 30) -> str | None:
+def chat(messages: list[dict], temperature: float = 0.7, timeout: float = 60) -> str | None:
     """调用 OpenAI 兼容的 chat/completions 接口；失败返回 None"""
     api_key, base_url, model = _conf()
     if not api_key:

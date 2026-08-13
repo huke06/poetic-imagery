@@ -22,6 +22,10 @@
             <span v-for="r in a.rels" :key="r.concept_id" class="tag border-shiqing/30 text-shiqing !text-[10px]">{{ r.concept_name }}</span>
           </div>
           <div class="flex gap-1.5 mt-3">
+            <button class="btn-outline !py-0.5 !px-2 !text-[11px]"
+              :class="a.is_featured ? '!border-amber-500 !text-amber-600' : '!text-qianhui/50'"
+              :title="a.is_featured ? '取消首页精选' : '设为首页精选（出现在首页滚动封面/艺术品精选）'"
+              @click="toggleHomeFeature(a)">{{ a.is_featured ? '★ 精选' : '☆ 精选' }}</button>
             <button class="btn-outline !py-0.5 !px-2 !text-[11px]" @click="openEdit(a)">编辑</button>
             <button class="btn-outline !py-0.5 !px-2 !text-[11px]" @click="openImage(a)">图片</button>
             <button class="btn-outline !py-0.5 !px-2 !text-[11px] !border-zhusha/50 !text-zhusha hover:!bg-zhusha" @click="remove(a)">删除</button>
@@ -90,7 +94,7 @@
 import { onMounted, ref } from 'vue'
 import {
   adminArtworkList, adminCreateArtwork, adminDeleteArtwork, adminRegenSvg,
-  adminUpdateArtwork, adminUploadImage, getConceptList,
+  adminToggleArtworkHomeFeature, adminUpdateArtwork, adminUploadImage, getConceptList,
 } from '../../api'
 import Modal from './Modal.vue'
 import Pagination from '../Pagination.vue'
@@ -141,6 +145,16 @@ async function remove(a) {
   if (!confirm(`确定删除《${a.name}》？`)) return
   await adminDeleteArtwork(a.id)
   await load()
+}
+
+async function toggleHomeFeature(a) {
+  const newVal = !a.is_featured
+  try {
+    await adminToggleArtworkHomeFeature(a.id, newVal)
+    a.is_featured = newVal
+  } catch (e) {
+    alert('设置精选失败：' + e.message)
+  }
 }
 
 async function doUpload() {

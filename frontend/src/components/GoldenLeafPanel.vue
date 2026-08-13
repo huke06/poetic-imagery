@@ -1,6 +1,7 @@
 <!--
   金叶集 — 左下角悬浮探索记录面板
   宣纸底 + 金叶 + 脉络连线 · rAF 渲染无抖动
+  v2：多字意象完整显示 + 主题族进度 + 分享意象地图
 -->
 <template>
   <div class="leaf-root" :style="{ bottom: bottom + 'px' }">
@@ -19,7 +20,7 @@
 
     <!-- Expanded -->
     <Transition name="panel">
-      <div v-if="open" class="leaf-card">
+      <div v-if="open" ref="cardEl" class="leaf-card">
         <div class="leaf-head" @pointerdown="onPointerDown" title="拖拽移动">
           <span class="font-kai text-sm font-bold tracking-wider text-moyan/80">
             金叶集 · 已探 <b class="text-zheshi">{{ list.length }}</b> 象
@@ -39,6 +40,13 @@
             :title="a.desc">{{ a.icon }} {{ a.name }}</span>
         </div>
 
+        <!-- 主题族进度 -->
+        <div v-if="themeChips.length" class="flex flex-wrap gap-1 px-4 py-1.5 border-b border-black/5">
+          <span v-for="t in themeChips" :key="t.name"
+            class="text-[9px] px-1.5 py-0.5 rounded-full text-white leading-4"
+            :style="{ background: t.color }">{{ t.name }} · {{ t.count }}</span>
+        </div>
+
         <canvas ref="cvs"
           class="leaf-cvs"
           @mousedown="onDown" @mousemove="onMove" @mouseup="onUp" @mouseleave="onUp"
@@ -54,25 +62,53 @@
         <div v-else class="leaf-foot text-qianhui/40 text-[10px]">
           滚轮缩放 · 拖拽平移 · 悬停叶面 · 双击前往
         </div>
+
+        <div class="leaf-actions">
+          <button class="leaf-share no-drag" @click.stop="shareMap">✦ 分享意象地图</button>
+        </div>
       </div>
     </Transition>
+
+    <!-- 分享预览弹窗 -->
+    <Teleport to="body">
+      <div v-if="shareOpen" class="fixed inset-0 z-[120] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+        @click.self="shareOpen = false">
+        <div class="bg-xuanzhi rounded-lg max-w-2xl w-full max-h-[92vh] overflow-y-auto p-4">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="font-song font-bold text-lg">我的意象地图</h3>
+            <button class="w-8 h-8 rounded-full hover:bg-black/5 text-xl" @click="shareOpen = false">×</button>
+          </div>
+          <div v-if="shareBusy" class="py-16 text-center text-qianhui text-sm">生成中…</div>
+          <div v-else-if="!shareSvg" class="py-16 text-center text-qianhui text-sm">生成失败，请稍后再试。</div>
+          <img v-else :src="shareUrl" class="w-full rounded shadow-card" alt="我的意象地图" />
+          <div class="flex gap-2 mt-4 justify-center">
+            <button class="btn-primary !py-1.5 !text-xs" @click="downloadPng">下载 PNG</button>
+            <button class="btn-outline !py-1.5 !text-xs" @click="downloadSvg">下载 SVG</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import axios from 'axios'
 import { useExploredImageries } from '../composables/useExploredImageries'
 import { useSideDrag } from '../composables/useSideDrag'
+import { downloadDataUrl, downloadText, svgDataUrl, svgToPngDataUrl } from '../utils/share'
 
 const { exploredList: list, newCount, achievements, themeProgress, consumeNew } = useExploredImageries()
 const router = useRouter()
 
 const open = ref(false)
-// 展开面板高约 460，收紧上限避免顶部溢出
+const cardEl = ref(null)
+// 动态测量面板真实高度，收紧上限避免顶部溢出（否则拖到上半部分后展开无法移动）
 const { bottom, onPointerDown, wasDragged, reclamp } = useSideDrag(
-  'sxz_leaf_float_pos', 20, () => (window.innerHeight || 800) - (open.value ? 480 : 70))
-watch(open, reclamp)
+  'sxz_leaf_float_pos', 20,
+  () => (window.innerHeight || 800) - (open.value ? (cardEl.value?.offsetHeight || 560) : 70) - 8)
+watch(open, async () => { await nextTick(); reclamp() })
 
 const pulse = ref(false)
 const cvs = ref(null)
@@ -80,6 +116,38 @@ const hover = ref(null)
 
 const dpr = Math.min(window.devicePixelRatio || 1, 2)
 const VW = 310, VH = 330
+
+// 主题族进度 chips
+const themeChips = computed(() => Object.entries(themeProgress.value)
+  .map(([name, v]) => ({ name, color: v.color || '#B5352C', count: v.explored }))
+  .sort((a, b) => b.count - a.count))
+
+// 分享
+const shareOpen = ref(false)
+const shareBusy = ref(false)
+const shareSvg = ref('')
+const shareUrl = computed(() => (shareSvg.value ? svgDataUrl(shareSvg.value) : ''))
+
+async function shareMap() {
+  shareOpen.value = true
+  shareBusy.value = true
+  shareSvg.value = ''
+  try {
+    const explored = list.value.map((e) => ({
+      name: e.name, theme: e.theme, themeColor: e.themeColor, poetryCount: e.poetryCount,
+    }))
+    const resp = await axios.post('/api/concept/exploration-card', { explored, theme_count: themeChips.value.length })
+    shareSvg.value = typeof resp.data === 'string' ? resp.data : ''
+  } catch { shareSvg.value = '' }
+  finally { shareBusy.value = false }
+}
+function downloadPng() {
+  if (!shareSvg.value) return
+  svgToPngDataUrl(shareSvg.value, 720).then((u) => downloadDataUrl(u, '我的意象地图.png'))
+}
+function downloadSvg() {
+  if (shareSvg.value) downloadText(shareSvg.value, '我的意象地图.svg')
+}
 
 // View state
 let zoom = 1, tx = 0, ty = 0
@@ -151,15 +219,19 @@ function drawLeaf(ctx, x, y, s, rot) {
   ctx.restore()
 }
 
-function drawChar(ctx, x, y, ch) {
-  ctx.fillStyle = '#FDF9F2'
-  ctx.font = `bold 16px "Kaiti SC","STKaiti","KaiTi","Noto Serif SC",serif`
+function drawName(ctx, x, y, name) {
+  const n = name.length
+  const size = n <= 1 ? 16 : n === 2 ? 13 : 10
+  ctx.font = 'bold ' + size + 'px "Kaiti SC","STKaiti","KaiTi","Noto Serif SC",serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.shadowColor = 'rgba(70,32,3,0.18)'
-  ctx.shadowBlur = 1.2
-  ctx.fillText(ch, x, y - 2)
-  ctx.shadowBlur = 0
+  ctx.lineJoin = 'round'
+  // 先描一圈浅色光晕，再用深棕填充，保证在金色叶片上清晰可读
+  ctx.lineWidth = 3
+  ctx.strokeStyle = 'rgba(253,249,242,0.85)'
+  ctx.strokeText(name, x, y - 2)
+  ctx.fillStyle = '#3A2506'
+  ctx.fillText(name, x, y - 2)
 }
 
 /* ─────────── Render ─────────── */
@@ -192,16 +264,19 @@ function render() {
   ctx.translate(tx, ty)
   ctx.scale(zoom, zoom)
 
-  // Layout
+  // Layout：黄金角螺旋，意象再多也能均匀铺开、互不遮挡
   const cx = VW / 2, cy = VH / 2
+  const golden = Math.PI * (3 - Math.sqrt(5))
   leaves = items.map((item, i) => {
-    const a = i * 1.7 + (i > 5 ? 0.45 : 0)
-    const r = Math.min(26 + i * 17 + (i > 6 ? (i - 6) * 10 : 0), 115)
+    const a = i * golden
+    const r = Math.min(28 + Math.sqrt(i) * 27, 130)
+    const name = item.name || '?'
     return {
-      id: item.id, name: item.name, theme: item.theme || '—',
+      id: item.id, name, theme: item.theme || '—',
       poetryCount: item.poetryCount, at: item.exploredAt,
-      x: Math.max(44, Math.min(VW - 44, cx + Math.cos(a) * r + (Math.random() - 0.5) * 8)),
-      y: Math.max(50, Math.min(VH - 36, cy + Math.sin(a) * r * 0.62 + (Math.random() - 0.5) * 5)),
+      size: 24 + Math.max(0, name.length - 1) * 4,
+      x: Math.max(46, Math.min(VW - 46, cx + Math.cos(a) * r + (Math.random() - 0.5) * 5)),
+      y: Math.max(52, Math.min(VH - 38, cy + Math.sin(a) * r * 0.82 + (Math.random() - 0.5) * 4)),
       rot: (Math.random() - 0.5) * 0.4,
     }
   })
@@ -226,10 +301,10 @@ function render() {
   }
   ctx.setLineDash([])
 
-  // Leaves (size 24)
+  // Leaves (自适应大小 + 完整意象名)
   for (const lf of leaves) {
-    drawLeaf(ctx, lf.x, lf.y, 24, lf.rot)
-    drawChar(ctx, lf.x, lf.y, lf.name.charAt(0))
+    drawLeaf(ctx, lf.x, lf.y, lf.size, lf.rot)
+    drawName(ctx, lf.x, lf.y, lf.name)
   }
 
   ctx.restore()
@@ -242,7 +317,7 @@ function hit(se) {
   const sx = (se.clientX - r.left - tx) / zoom
   const sy = (se.clientY - r.top - ty) / zoom
   for (const lf of leaves) {
-    if (Math.hypot(sx - lf.x, sy - lf.y) < 24 * 1.25) return lf
+    if (Math.hypot(sx - lf.x, sy - lf.y) < Math.max(26, lf.size) * 1.3) return lf
   }
   return null
 }
@@ -267,7 +342,7 @@ function onWheel(e) {
 }
 function onDbl(e) {
   const lf = hit(e)
-  if (lf) { open.value = false; router.push(`/concept/${lf.id}`) }
+  if (lf) { open.value = false; router.push('/concept/' + lf.id) }
 }
 function zoomIn() { zoom = Math.min(3, zoom * 1.2); dirty = true }
 function zoomOut() { zoom = Math.max(0.45, zoom / 1.2); dirty = true }
@@ -337,10 +412,17 @@ onBeforeUnmount(() => cancelAnimationFrame(rid))
 .leaf-btn:hover { background: rgba(0,0,0,0.05); color: #6B5B40; }
 .leaf-cvs { display: block; width: 310px; height: 330px; margin: 0 auto; cursor: grab; }
 .leaf-foot {
-  padding: 8px 16px 10px; text-align: center;
+  padding: 8px 16px 6px; text-align: center;
   border-top: 1px solid rgba(160,135,100,0.1);
   min-height: 32px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.leaf-actions { padding: 6px 16px 10px; text-align: center; border-top: 1px solid rgba(160,135,100,0.08); }
+.leaf-share {
+  font-size: 12px; color: #9B6820; cursor: pointer; padding: 5px 14px;
+  border: 1px solid rgba(200,152,56,0.35); border-radius: 999px;
+  background: rgba(200,152,56,0.06); transition: all .2s;
+}
+.leaf-share:hover { background: rgba(200,152,56,0.14); border-color: #C89838; }
 .swap-enter-active,.swap-leave-active{transition:all .2s}
 .swap-enter-from,.swap-leave-to{opacity:0;transform:scale(.75)}
 .panel-enter-active{transition:all .25s cubic-bezier(.16,1,.3,1)}

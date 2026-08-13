@@ -22,6 +22,12 @@ class Settings:
     LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
     LLM_MODEL: str = os.getenv("LLM_MODEL", "deepseek-v4-flash")
 
+    # 向量化 Embedding（可选；未配置时 RAG 回退到关键词检索）
+    EMBEDDING_API_KEY: str = os.getenv("EMBEDDING_API_KEY", "")
+    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "qwen3-vl-embedding")
+    EMBEDDING_BASE_URL: str = os.getenv("EMBEDDING_BASE_URL", "https://dashscope.aliyuncs.com/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding")
+    EMBEDDING_DIM: int = int(os.getenv("EMBEDDING_DIM", "2560"))
+
     # 管理后台令牌
     ADMIN_TOKEN: str = os.getenv("ADMIN_TOKEN", "shixiangzhi-admin")
 

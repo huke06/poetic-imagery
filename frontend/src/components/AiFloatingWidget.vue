@@ -1,6 +1,6 @@
-<!-- AI 助手悬浮窗 — 右下角，支持随时调用 · 可沿右侧拖拽调整位置 -->
+<!-- AI 助手悬浮窗 — 右下角，支持随时调用 · 可沿右侧拖拽调整位置 · 多轮对话 -->
 <template>
-  <div class="ai-float-root" :style="{ bottom: bottom + 'px' }">
+  <div class="ai-float-root" :style="{ bottom: bottom + 'px', right: right + 'px' }">
     <!-- Collapsed button -->
     <Transition name="swap">
       <button v-if="!open" class="ai-float-btn" @pointerdown="onPointerDown" @click="onBtnClick" title="诗象问答（可拖拽移动）">
@@ -17,21 +17,27 @@
     <Transition name="slide">
       <div v-if="open" class="ai-float-card">
         <div class="ai-float-head" @pointerdown="onPointerDown" title="拖拽移动">
-          <span class="font-kai text-sm font-bold text-moyan/80">诗象问答</span>
+          <span class="font-kai text-sm font-bold text-moyan/80">诗象问答 · 灵犀</span>
           <button class="ai-float-close no-drag" @click="open = false">×</button>
         </div>
 
         <div class="ai-float-body" ref="bodyRef">
-          <div v-if="!msgs.length" class="text-center text-qianhui/50 text-xs py-16">
+          <div v-if="!msgs.length && !loading" class="text-center text-qianhui/50 text-xs py-10 px-2">
             <p class="font-kai text-base mb-2">何以解诗？</p>
-            <p>问意象、问诗句、问诗人…</p>
+            <p>问意象、问诗句、问诗人，也可与我闲聊…</p>
+            <div class="flex flex-col gap-1.5 mt-4 text-left">
+              <button v-for="q in starterQuestions" :key="q" class="ai-suggest" @click="send(q)">{{ q }}</button>
+            </div>
           </div>
           <div v-for="(m, i) in msgs" :key="i" class="mb-3">
             <div v-if="m.role === 'user'" class="flex justify-end">
               <span class="ai-bubble-user">{{ m.text }}</span>
             </div>
-            <div v-else class="flex justify-start">
-              <span class="ai-bubble-ai" v-text="m.text"></span>
+            <div v-else class="flex flex-col items-start">
+              <span class="ai-bubble-ai" v-html="renderText(m.text)"></span>
+              <div v-if="m.refs && m.refs.length" class="flex flex-wrap gap-1 mt-1.5">
+                <button v-for="r in m.refs" :key="r.key" class="ai-ref" @click="goRef(r.to)">{{ r.label }}</button>
+              </div>
             </div>
           </div>
           <div v-if="loading" class="flex justify-start mb-3">
@@ -41,13 +47,16 @@
               <span class="dot-bounce" style="animation-delay:0.3s">●</span>
             </span>
           </div>
+          <div v-if="suggestions.length && !loading" class="flex flex-wrap gap-1.5 mt-1">
+            <button v-for="s in suggestions" :key="s" class="ai-suggest" @click="send(s)">{{ s }}</button>
+          </div>
         </div>
 
         <div class="ai-float-foot">
-          <input v-model="input" @keyup.enter="send"
-            placeholder="问意象、诗句…" class="ai-input"
+          <input v-model="input" @keyup.enter="send()"
+            placeholder="问意象、诗句，或聊聊诗词…" class="ai-input"
             :disabled="loading" />
-          <button class="ai-send-btn" @click="send" :disabled="loading || !input.trim()">→</button>
+          <button class="ai-send-btn" @click="send()" :disabled="loading || !input.trim()">→</button>
         </div>
       </div>
     </Transition>
@@ -55,37 +64,59 @@
 </template>
 
 <script setup>
-import { nextTick, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { agentAsk } from '../api'
-import { useSideDrag } from '../composables/useSideDrag'
+import { useFreeDrag } from '../composables/useFreeDrag'
 
 const open = ref(false)
-// 展开时卡片高约 420+56，收紧上限避免顶部溢出屏幕
-const { bottom, onPointerDown, wasDragged, reclamp } = useSideDrag(
-  'sxz_ai_float_pos', 20, () => (window.innerHeight || 800) - (open.value ? 500 : 70))
-watch(open, reclamp)
+// 展开后可上下 + 左右自由移动；收起后吸附回右侧
+const { right, bottom, onPointerDown, wasDragged, resetRight } = useFreeDrag('sxz_ai_float_pos', 20, 20)
 
 const input = ref('')
 const msgs = ref([])
 const loading = ref(false)
 const bodyRef = ref(null)
+const history = ref([])        // 多轮对话历史（传给后端解析指代）
+const suggestions = ref([])    // 后端返回的追问建议
+const starterQuestions = [
+  '「月」在古诗里有哪些含义？',
+  '夕阳为什么总与离愁相伴？',
+  '同时写月和夕阳的诗词有哪些？',
+]
 
 // 区分点击与拖拽：拖拽后不触发打开
 function onBtnClick() {
   if (!wasDragged()) open.value = true
 }
 
-async function send() {
-  const q = input.value.trim()
-  if (!q || loading.value) return
-  msgs.value.push({ role: 'user', text: q })
+// 轻量富文本：加粗 / 换行 / 列表，其余转义防止注入
+function renderText(text) {
+  if (!text) return ''
+  return text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code>$1</code>')
+    .replace(new RegExp(String.fromCharCode(10), 'g'), '<br>')
+    .replace(/^[-·•]\s?(.+)$/gm, '· $1')
+}
+
+async function send(q) {
+  const question = (q || input.value || '').trim()
+  if (!question || loading.value) return
+  msgs.value.push({ role: 'user', text: question })
   input.value = ''
   loading.value = true
+  suggestions.value = []
+  history.value.push({ role: 'user', content: question })
   await nextTick()
   if (bodyRef.value) bodyRef.value.scrollTop = bodyRef.value.scrollHeight
   try {
-    const resp = await agentAsk(q)
-    msgs.value.push({ role: 'ai', text: resp.answer.replace(/\*\*/g, '').replace(/###?\s?/g, '') })
+    const resp = await agentAsk(question, history.value.slice(-8))
+    msgs.value.push({ role: 'ai', text: resp.answer || '暂无回答', refs: buildRefs(resp.references) })
+    history.value.push({ role: 'ai', content: resp.answer || '' })
+    suggestions.value = (resp.suggestions || []).slice(0, 3)
   } catch {
     msgs.value.push({ role: 'ai', text: '抱歉，暂时无法回答。请稍后再试。' })
   } finally {
@@ -96,13 +127,37 @@ async function send() {
 }
 
 watch(open, async (v) => {
+  if (!v) resetRight()
   if (v) await nextTick()
   if (bodyRef.value) bodyRef.value.scrollTop = bodyRef.value.scrollHeight
 })
+
+const router = useRouter()
+function buildRefs(references) {
+  if (!references) return []
+  const out = []
+  const push = (kind, label, to) => out.push({ kind, label, to, key: kind + to + label })
+  for (const p of references.poetries || []) push('poetry', '《' + p.title + '》', '/poetry/' + p.poetry_id)
+  for (const c of references.concepts || []) push('concept', c.name, '/concept/' + c.id)
+  for (const a of references.artworks || []) push('artwork', '《' + a.name + '》', '/artworks?id=' + a.id)
+  return out.slice(0, 6)
+}
+function goRef(to) { router.push(to) }
+
+// 供首页「向灵犀助手提问」等入口触发：window 派发 sxz-ask 事件后自动打开并提问
+function onAskEvent(e) {
+  const q = e.detail?.question || e.detail
+  if (!q) return
+  open.value = true
+  if (q !== input.value) input.value = ''
+  send(q)
+}
+onMounted(() => window.addEventListener('sxz-ask', onAskEvent))
+onBeforeUnmount(() => window.removeEventListener('sxz-ask', onAskEvent))
 </script>
 
 <style scoped>
-.ai-float-root { position: fixed; right: 20px; z-index: 81; }
+.ai-float-root { position: fixed; z-index: 81; }
 
 .ai-float-btn {
   width: 48px; height: 48px; border-radius: 50%;
@@ -117,7 +172,7 @@ watch(open, async (v) => {
 
 .ai-float-card {
   position: absolute; bottom: 56px; right: 0;
-  width: 340px; height: 420px;
+  width: 340px; height: 440px;
   background: rgba(245,241,232,0.96); backdrop-filter: blur(14px);
   border: 1px solid rgba(160,135,100,0.2); border-radius: 12px;
   box-shadow: 0 10px 40px rgba(80,55,20,0.15);
@@ -147,9 +202,23 @@ watch(open, async (v) => {
 }
 .ai-bubble-ai {
   background: rgba(43,76,126,0.08); color: #2C2C2C; font-size: 12px;
-  padding: 6px 12px; border-radius: 12px 12px 12px 2px; max-width: 85%;
-  word-break: break-word; line-height: 1.6; white-space: pre-line;
+  padding: 6px 12px; border-radius: 12px 12px 12px 2px; max-width: 88%;
+  word-break: break-word; line-height: 1.7; white-space: normal;
 }
+.ai-bubble-ai :deep(b) { color: #2B4C7E; }
+.ai-suggest {
+  display: block; width: 100%; text-align: left;
+  font-size: 11px; padding: 6px 10px; color: #2B4C7E;
+  border: 1px solid rgba(43,76,126,0.22); border-radius: 8px;
+  background: rgba(43,76,126,0.04); cursor: pointer; transition: all 0.15s;
+}
+.ai-suggest:hover { background: rgba(43,76,126,0.1); border-color: #2B4C7E; }
+.ai-ref {
+  font-size: 11px; padding: 2px 8px; color: #2B4C7E;
+  border: 1px solid rgba(43,76,126,0.25); border-radius: 6px;
+  background: rgba(43,76,126,0.05); cursor: pointer; transition: all 0.15s;
+}
+.ai-ref:hover { background: rgba(43,76,126,0.12); border-color: #2B4C7E; }
 .thinking-dots {
   display: flex; align-items: center; gap: 3px;
   padding: 10px 16px;

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Artwork, Concept, ConceptArtworkRel, ConceptPoetryRel, Poetry
 from ..utils import llm
+from . import embedding_index
 from .tone_service import poem_tones
 
 # 情感关键词归一化 → 标准情感标签
@@ -118,8 +119,19 @@ def _gather_context(db: Session, concepts: list[Concept], emotions: list[str]):
 
 
 def _build_rag_prompt(concepts, poetries, artworks, question, shared_pids, mentioned_titles: set = None):
-    """构建结构化 RAG 上下文：共享作品优先，用户提及的诗篇强制首部"""
+    """构建带 [n] 角标的 RAG 上下文，返回 (prompt, refs)
+
+    refs 每个元素带稳定 idx，用于回答后把 LLM 引用的 [n] 确定性映射回真实链接。
+    """
+    refs: list[dict] = []
     parts = []
+
+    def add_ref(**kw):
+        idx = len(refs) + 1
+        kw["idx"] = idx
+        refs.append(kw)
+        return idx
+
     # ⭐ 用户明确提及的诗篇-绝对置顶
     if mentioned_titles:
         pinned = [p for p in poetries if p["title"] in mentioned_titles]
@@ -127,10 +139,15 @@ def _build_rag_prompt(concepts, poetries, artworks, question, shared_pids, menti
             parts.append("【⚠ 用户明确问到的诗篇——以下内容必须仔细研读并引用】")
             for p in pinned:
                 clauses = "；".join(c["clause"] for c in p["clauses"][:3])
-                parts.append(f"《{p['title']}》（{p['dynasty']}·{p['author']}）全文：{p.get('content', '')[:200]}| 含象句：{clauses}")
+                idx = add_ref(type="poetry", poetry_id=p["poetry_id"], title=p["title"],
+                              author=p["author"], dynasty=p["dynasty"], clause=clauses)
+                parts.append(f"[{idx}]《{p['title']}》（{p['dynasty']}·{p['author']}）全文：{p.get('content', '')[:200]}| 含象句：{clauses}")
     # 意象本体
-    for c in concepts:
-        parts.append(f"【意象·{c.name}】{c.poetic_meaning[:120]} 情感标签：{c.emotion_tags}")
+    if concepts:
+        parts.append("【意象】")
+        for c in concepts:
+            idx = add_ref(type="concept", concept_id=c.id, name=c.name)
+            parts.append(f"[{idx}]「{c.name}」{c.poetic_meaning[:120]} 情感标签：{c.emotion_tags}")
     # 共享作品
     if shared_pids:
         shared_info = [p for p in poetries if p["shared"]][:6]
@@ -138,31 +155,50 @@ def _build_rag_prompt(concepts, poetries, artworks, question, shared_pids, menti
             parts.append("【⚠ 以下作品同时包含这些意象——优先引用】")
             for p in shared_info:
                 clauses = "；".join(c["clause"] for c in p["clauses"][:3])
-                parts.append(f"《{p['title']}》（{p['dynasty']}·{p['author']}）：{clauses}")
+                idx = add_ref(type="poetry", poetry_id=p["poetry_id"], title=p["title"],
+                              author=p["author"], dynasty=p["dynasty"], clause=clauses)
+                parts.append(f"[{idx}]《{p['title']}》（{p['dynasty']}·{p['author']}）：{clauses}")
     # 非共享名句
-    unshared = [p for p in poetries if not p["shared"]][:8]
+    unshared = [p for p in poetries if not p["shared"]][:10]
     if unshared:
-        parts.append(f"【其他关联名句】")
+        parts.append("【其他关联名句】")
         for p in unshared:
             c = p["clauses"][0]
-            parts.append(f"《{p['title']}》（{p['dynasty']}·{p['author']}）「{c['clause']}」（{c['emotion']}）")
+            idx = add_ref(type="poetry", poetry_id=p["poetry_id"], title=p["title"],
+                          author=p["author"], dynasty=p["dynasty"], clause=c["clause"])
+            parts.append(f"[{idx}]《{p['title']}》（{p['dynasty']}·{p['author']}）「{c['clause']}」（{c['emotion']}）")
     # 古画
     if artworks:
         parts.append("【关联古画】")
         for a in artworks[:3]:
-            parts.append(f"《{a['name']}》（{a['dynasty']}·{a['artist']}）")
+            idx = add_ref(type="artwork", artwork_id=a["id"], name=a["name"],
+                          artist=a["artist"], dynasty=a["dynasty"])
+            parts.append(f"[{idx}]《{a['name']}》（{a['dynasty']}·{a['artist']}）")
     prompt = (
-        "你是古诗词意象专家。请基于以下资料回答用户问题。\n"
-        "要求：① 引用资料中出现的诗篇时用《篇名》（朝代·作者）格式，不得编造出处；"
-        "② 优先引用【⚠ 共享作品】里的篇目；"
-        "③ 若资料不足以完整回答，请大胆运用你的古典诗词学识补充作答，"
-        "并注明哪些是『据本地资料』、哪些是『学识补充』，切勿以资料不足为由拒绝回答；"
-        "如『哪些诗人最爱用某意象』这类问题，应据学识给出合理判断与简要理由。"
-        "语言典雅简洁，输出纯文本，不要使用 Markdown 符号（如 **、#、- 等）。\n\n"
+        "你是「诗象志」的古诗词意象专家，擅于陪人读诗、解诗、探索意象。请基于以下资料回答用户问题。\n"
+        "回答要求：\n"
+        "① 结构：先给一句凝练的核心结论，再分层展开（含义→情感色彩→代表诗句→演变或延伸），最后可自然收束；\n"
+        "② 引用诗篇必须用《篇名》（朝代·作者）格式，且只能引用资料中真实出现的篇目，不得编造出处；\n"
+        "③ 优先引用【⚠ 共享作品】与含『经典』标记的名句；\n"
+        "④ 资料不足时，请大胆结合古典诗词学识补充作答，并用『据本地资料』与『学识补充』区分，切勿以资料不足为由拒绝回答；\n"
+        "⑤ 像『哪些诗人最爱用某意象』这类问题，据学识给出合理判断并说明理由。\n"
+        "⑥ 语气典雅自然、有温度，像一位博学的诗友在对话，而非百科条目；输出纯文本，不要使用 Markdown 符号（**、#、-、列表符号等），可用换行分段。\n"
+        "⑦ 引用标注：每条资料前有 [数字] 角标；回答中凡引用某条资料，就在对应句子末尾标注相同的 [数字]，只标注真实引用到的资料，不要臆造不存在的角标。\n\n"
         + "\n".join(parts)
         + f"\n\n【用户问题】{question}"
     )
-    return prompt
+    return prompt, refs
+
+
+def _parse_citations(text: str, max_idx: int) -> list[int]:
+    """提取回答中出现的合法 [n] 角标（去重、按出现顺序）"""
+    import re
+    seen = []
+    for m in re.findall(r"\[(\d+)\]", text):
+        n = int(m)
+        if 1 <= n <= max_idx and n not in seen:
+            seen.append(n)
+    return seen
 
 
 def _find_mentioned_poems(db: Session, text: str) -> list[dict]:
@@ -215,10 +251,49 @@ def _fulltext_search_poems(db: Session, query: str, limit: int = 6) -> list[dict
     return results
 
 
+def _smalltalk(text: str) -> str | None:
+    """轻量寒暄/身份/致谢识别，让助手能自然聊天"""
+    t = (text or "").strip().lower()
+    if any(w in t for w in ("你好", "您好", "嗨", "哈喽", "hello", "hi", "在吗", "早上好", "下午好", "晚上好")):
+        return "你好呀，我是「诗象志」的灵犀助手。可以问我意象的含义、演变与代表诗句，或让我依格律为你创诗。比如：「月」在古诗里有哪些含义？"
+    if any(w in t for w in ("你是谁", "你叫什么", "介绍一下你", "你能做什么", "你会什么", "帮助", "怎么用", "使用说明", "有什么功能")):
+        return "我是「诗象志」灵犀助手，能陪你漫游古诗词意象世界。\n\n你可以问我：\n· 某个意象（如「月」「夕阳」「柳」「雁」）的含义与演变；\n· 哪些诗人最爱用某意象、代表诗句；\n· 多个意象的共现关系；\n· 也可切换到「意象创诗」，让我依格律为你写诗。"
+    if any(w in t for w in ("谢谢", "多谢", "感谢", "thanks", "辛苦", "很棒", "真好", "不错")):
+        return "不客气～能陪你一起读诗，是我的荣幸。还想探索哪个意象呢？"
+    if any(w in t for w in ("再见", "拜拜", "bye", "告辞", "晚安")):
+        return "后会有期～愿你「诗象」常伴，下次再一起漫游意象之境。"
+    return None
+
+
+def _resolve_from_history(db: Session, context_msgs: list[dict] | None) -> list[Concept]:
+    """从对话历史中还原最近讨论的意象，用于处理'它/这个/这首诗'等指代追问"""
+    for m in reversed(context_msgs or []):
+        cs = _find_concepts(db, (m.get("content") or "")[:300])
+        if cs:
+            return cs[:2]
+    return []
+
+
+def _followup_suggestions(db: Session, concepts: list[Concept] | None = None) -> list[str]:
+    if concepts:
+        n = concepts[0].name
+        return [
+            f"「{n}」的情感色彩经历了怎样的演变？",
+            f"哪些诗人最爱用「{n}」意象？",
+            f"和「{n}」经常一起出现的意象有哪些？",
+        ]
+    sample = [c.name for c in db.query(Concept).limit(3).all()]
+    return [f"「{n}」在古诗里有什么含义？" for n in sample] or ["月有哪些含义？", "夕阳为何总与离愁相伴？", "柳和雁分别寄托什么？"]
+
+
 def ask(db: Session, question: str, context_msgs: list[dict] | None = None) -> dict:
     """context_msgs: [{"role": "user"|"ai", "content": "..."}] 完整对话历史"""
     concepts = _find_concepts(db, question)
     emotions = _find_emotions(question)
+
+    # 指代解析：当前问题未命中意象时，从历史中还原最近讨论的意象
+    if not concepts and context_msgs:
+        concepts = _resolve_from_history(db, context_msgs)
 
     mentioned_poems = _find_mentioned_poems(db, question)
     if mentioned_poems and not concepts:
@@ -229,7 +304,25 @@ def ask(db: Session, question: str, context_msgs: list[dict] | None = None) -> d
                 if cc and cc.id not in {x.id for x in concepts}:
                     concepts.append(cc)
 
+    # ==== 语义检索·意象（向量库，先找意象，命中则并入；后段再用其名句）====
+    sem = {"concepts": [], "clauses": []}
+    try:
+        sem = embedding_index.semantic_search(db, question, top_k=6)
+    except Exception:
+        pass
+    existing_cids = {c.id for c in concepts}
+    for sc in sem.get("concepts", []):
+        cc = db.get(Concept, sc["concept_id"])
+        if cc and cc.id not in existing_cids:
+            concepts.append(cc)
+            existing_cids.add(cc.id)
+
     if not concepts:
+        st = _smalltalk(question)
+        if st:
+            return {"answer": st, "source": "local",
+                    "references": {"concepts": [], "poetries": [], "artworks": []},
+                    "suggestions": _followup_suggestions(db)}
         if llm.llm_available():
             sys_text = "你是古典诗词专家，直接作答。"
             if context_msgs:
@@ -245,7 +338,6 @@ def ask(db: Session, question: str, context_msgs: list[dict] | None = None) -> d
             ])
             if answer:
                 # 严格按《篇名》格式提取回答中明确引用的诗篇
-                import re
                 cited_titles = set(re.findall(r"《(.+?)》", answer))
                 mp_refs = []
                 for ct in cited_titles:
@@ -255,7 +347,8 @@ def ask(db: Session, question: str, context_msgs: list[dict] | None = None) -> d
                                         "dynasty": mp.dynasty, "writing_type": mp.writing_type,
                                         "clauses": [], "shared": False})
                 return {"answer": answer, "source": "llm_free",
-                        "references": {"concepts": [], "poetries": mp_refs[:6], "artworks": []}}
+                        "references": {"concepts": [], "poetries": mp_refs[:6], "artworks": []},
+                        "suggestions": _followup_suggestions(db)}
 
         all_c = db.query(Concept).all()
         names = "、".join(f"「{c.name}」" for c in all_c)
@@ -264,6 +357,7 @@ def ask(db: Session, question: str, context_msgs: list[dict] | None = None) -> d
             "answer": f"本地意象库收录：{names}。您的问题未命中。例如：{examples}",
             "source": "local",
             "references": {"concepts": [], "poetries": [], "artworks": []},
+            "suggestions": _followup_suggestions(db),
         }
 
     poetries, artworks, shared_pids = _gather_context(db, concepts, emotions)
@@ -290,14 +384,34 @@ def ask(db: Session, question: str, context_msgs: list[dict] | None = None) -> d
             if c and c not in concepts:
                 concepts.append(c)
 
+    # ==== 语义检索·名句（向量库，命中后并入上下文）====
+    existing_pids = {p["poetry_id"] for p in poetries}
+    sem_by_poetry = {}
+    for sc in sem.get("clauses", []):
+        pid = sc["poetry_id"]
+        if not pid or pid in existing_pids:
+            continue
+        if pid not in sem_by_poetry:
+            sem_by_poetry[pid] = {"poetry_id": pid, "title": sc["title"], "author": sc["author"],
+                                  "dynasty": sc["dynasty"], "writing_type": "", "content": "",
+                                  "clauses": [], "shared": False, "from_semantic": True}
+        sem_by_poetry[pid]["clauses"].append({
+            "clause": sc["clause"], "emotion": sc["emotion"], "is_classic": sc["is_classic"],
+            "weight": 2, "concept_id": sc["concept_id"], "concept_name": sc["concept_name"],
+        })
+    if sem_by_poetry:
+        poetries = list(sem_by_poetry.values()) + poetries
+
     if llm.llm_available():
         # 对话历史放入 system 消息——LLM 必须根据历史解析当前问题中的指代（"他"、"这首诗"等）
         system_text = (
-            "你是博学的古典诗词助手。回答时优先引用本地资料中的篇目并标注出处；"
-            "当资料不足以完整回答时，请自由运用你的古典诗词学识补充作答，"
+            "你是「诗象志」的博学古典诗词助手，性格儒雅、有温度，像一位随时陪人读诗解诗的诗友。"
+            "回答时优先引用本地资料中的篇目并标注《篇名》（朝代·作者）出处；"
+            "当资料不足以完整回答时，请自由运用古典诗词学识补充作答，"
             "并用『据本地资料』与『学识补充』加以区分。"
             "切勿因资料缺乏量化数据而拒绝回答——应尽力给出有依据、有分寸的解答，"
-            "对无法确证之处如实说明即可。回答使用纯文本，不用 Markdown 符号。"
+            "对无法确证之处如实说明即可。回答宜先结论后展开，典雅自然，"
+            "使用纯文本，不用 Markdown 符号（**、#、- 等），可用换行分段。"
         )
         if context_msgs:
             lines = []
@@ -312,36 +426,49 @@ def ask(db: Session, question: str, context_msgs: list[dict] | None = None) -> d
                     + "\n".join(lines)
                 )
         mentioned_titles = {m["title"] for m in _find_mentioned_poems(db, question)}
-        prompt = _build_rag_prompt(concepts, poetries, artworks, question, shared_pids, mentioned_titles)
+        prompt, refs = _build_rag_prompt(concepts, poetries, artworks, question, shared_pids, mentioned_titles)
         msgs = [{"role": "system", "content": system_text},
                 {"role": "user", "content": prompt}]
         answer = llm.chat(msgs)
         if answer:
-            # 引用过滤 + 答案提及的诗篇补充
-            # 严格过滤：≥3字标题允许子串匹配，短标题（2字）只接受《篇名》格式或完整6字句读
-            filtered_p = [p for p in poetries if f"《{p['title']}》" in answer or (
-                len(p["title"]) >= 3 and p["title"] in answer) or any(
-                len(c["clause"]) >= 6 and c["clause"] in answer for c in p["clauses"])]
-            # 答案中明确引用了《篇名》格式的诗篇 → 从 DB 查补链接
-            import re
-            cited_titles = set(re.findall(r"《(.+?)》", answer))
-            existing_titles = {p["title"] for p in filtered_p}
-            for ct in cited_titles:
-                if ct in existing_titles:
-                    continue
-                mp = db.query(Poetry).filter_by(title=ct).first()
-                if mp:
-                    filtered_p.append({"poetry_id": mp.id, "title": mp.title,
-                                       "author": mp.author, "dynasty": mp.dynasty,
-                                       "writing_type": mp.writing_type, "clauses": [],
-                                       "content": mp.content, "shared": False})
-            filtered_a = [a for a in artworks[:3] if a["name"] in answer]
+            # 确定性引用：把 LLM 标注的 [n] 角标映射回真实链接，并按出现顺序重排成 1,2,3…
+            cited_idx = _parse_citations(answer, len(refs))
+            ref_by_idx = {r["idx"]: r for r in refs}
+            if cited_idx:
+                # 按回答中出现顺序取引用，并重排成连续 1,2,3…
+                cited = [ref_by_idx[i] for i in cited_idx]
+                mapping = {old: new for new, old in enumerate(cited_idx, 1)}
+                answer = re.sub(
+                    r"\[(\d+)\]",
+                    lambda m: f"[{mapping[int(m.group(1))]}]" if int(m.group(1)) in mapping else m.group(0),
+                    answer,
+                )
+                for i, r in enumerate(cited, 1):
+                    r["idx"] = i
+            else:
+                cited = refs[:8]  # 未标角标时退化为返回前若干资料
+            poetries_refs, concepts_refs, artworks_refs = [], [], []
+            for r in cited:
+                if r["type"] == "poetry":
+                    poetries_refs.append({"poetry_id": r.get("poetry_id"), "title": r.get("title"),
+                                          "author": r.get("author"), "dynasty": r.get("dynasty"),
+                                          "clause": r.get("clause", "")})
+                elif r["type"] == "concept":
+                    concepts_refs.append({"id": r.get("concept_id"), "name": r.get("name")})
+                elif r["type"] == "artwork":
+                    artworks_refs.append({"id": r.get("artwork_id"), "name": r.get("name"),
+                                          "artist": r.get("artist"), "dynasty": r.get("dynasty")})
+            if not concepts_refs:
+                concepts_refs = [{"id": c.id, "name": c.name} for c in concepts]
             return {
                 "answer": answer, "source": "llm",
                 "references": {
-                    "concepts": [{"id": c.id, "name": c.name} for c in concepts],
-                    "poetries": filtered_p[:8], "artworks": filtered_a or artworks[:3],
+                    "concepts": concepts_refs,
+                    "poetries": poetries_refs,
+                    "artworks": artworks_refs,
+                    "citations": cited,
                 },
+                "suggestions": _followup_suggestions(db, concepts),
             }
         # LLM 失败回落
         return {
@@ -349,6 +476,7 @@ def ask(db: Session, question: str, context_msgs: list[dict] | None = None) -> d
             "source": "local",
             "references": {"concepts": [{"id": c.id, "name": c.name} for c in concepts],
                            "poetries": poetries[:8], "artworks": artworks[:3]},
+            "suggestions": _followup_suggestions(db, concepts),
         }
 
     return {
@@ -356,6 +484,7 @@ def ask(db: Session, question: str, context_msgs: list[dict] | None = None) -> d
         "source": "local",
         "references": {"concepts": [{"id": c.id, "name": c.name} for c in concepts],
                        "poetries": poetries[:8], "artworks": artworks[:3]},
+        "suggestions": _followup_suggestions(db, concepts),
     }
 
 

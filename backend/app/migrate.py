@@ -18,11 +18,18 @@ ADD_COLUMNS = [
     ("concept_poetry_rel", "role_in_poem", "VARCHAR(16) NOT NULL DEFAULT ''"),
     ("concept_poetry_rel", "usage_keywords", "VARCHAR(128) NOT NULL DEFAULT ''"),
     ("artwork", "dynasty_main", "VARCHAR(32) NOT NULL DEFAULT ''"),
+    ("artwork", "is_featured", "INTEGER NOT NULL DEFAULT 0"),
     ("concept", "usage_summary", "TEXT NOT NULL DEFAULT ''"),
     ("concept", "is_featured", "INTEGER NOT NULL DEFAULT 0"),
     ("concept_relation", "cooccurrence_type", "VARCHAR(16) NOT NULL DEFAULT ''"),
     ("concept_relation", "diaphaneity", "FLOAT NOT NULL DEFAULT 0.2"),
     ("concept_relation", "verse", "VARCHAR(255) NOT NULL DEFAULT ''"),
+    ("concept_relation", "poem_title", "VARCHAR(128) NOT NULL DEFAULT ''"),
+    ("concept_relation", "poet", "VARCHAR(64) NOT NULL DEFAULT ''"),
+    ("concept_relation", "dynasty", "VARCHAR(32) NOT NULL DEFAULT ''"),
+    ("cooccurrence_stat", "poem_title", "VARCHAR(128) NOT NULL DEFAULT ''"),
+    ("cooccurrence_stat", "poet", "VARCHAR(64) NOT NULL DEFAULT ''"),
+    ("cooccurrence_stat", "dynasty", "VARCHAR(32) NOT NULL DEFAULT ''"),
     ("concept_artwork_rel", "is_featured", "INTEGER NOT NULL DEFAULT 0"),
 ]
 

@@ -4,12 +4,14 @@
     <section class="relative overflow-hidden min-h-[78vh] flex items-center">
       <!-- 层叠夜空 -->
       <div class="absolute inset-0" style="background: linear-gradient(180deg, #16283F 0%, #2B4C7E 46%, #7A89A0 78%, #F5F1E8 100%)"></div>
-      <!-- 明月 -->
-      <div class="absolute right-[26%] md:right-[30%] top-[14%] w-28 h-28 sm:w-36 sm:h-36 rounded-full moon-breathe"
-        style="background: radial-gradient(circle at 38% 34%, #FDF9E7 0%, #F2E8C9 58%, #E3D5A8 100%);
-               box-shadow: 0 0 60px 26px rgba(245, 236, 200, 0.35), 0 0 140px 60px rgba(245, 236, 200, 0.16)"></div>
-      <!-- 淡墨群山 -->
-      <svg class="absolute bottom-0 left-0 w-full pointer-events-none" preserveAspectRatio="none" viewBox="0 0 1200 260" style="height: 42%">
+      <!-- 明月（视差层） -->
+      <div ref="moonWrap" class="absolute inset-0 pointer-events-none will-change-transform">
+        <div class="absolute right-[26%] md:right-[30%] top-[14%] w-28 h-28 sm:w-36 sm:h-36 rounded-full moon-breathe"
+          style="background: radial-gradient(circle at 38% 34%, #FDF9E7 0%, #F2E8C9 58%, #E3D5A8 100%);
+                 box-shadow: 0 0 60px 26px rgba(245, 236, 200, 0.35), 0 0 140px 60px rgba(245, 236, 200, 0.16)"></div>
+      </div>
+      <!-- 淡墨群山（视差层） -->
+      <svg ref="mountEl" class="absolute bottom-0 left-0 w-full pointer-events-none will-change-transform" preserveAspectRatio="none" viewBox="0 0 1200 260" style="height: 42%">
         <path d="M0 160 Q150 60 320 130 T640 110 Q760 40 900 120 T1200 90 L1200 260 L0 260 Z" fill="#1D3450" opacity="0.55"/>
         <path d="M0 205 Q200 130 420 180 T840 160 Q1000 120 1200 175 L1200 260 L0 260 Z" fill="#16283F" opacity="0.8"/>
         <path d="M0 245 Q260 200 520 232 T1200 220 L1200 260 L0 260 Z" fill="#0F1E33"/>
@@ -17,7 +19,7 @@
       <!-- 月辉粒子 -->
       <ParticleCanvas mode="moon" :density="1.2" />
 
-      <div class="relative max-w-6xl mx-auto px-4 py-24 w-full">
+      <div ref="heroContent" class="relative max-w-6xl mx-auto px-4 py-24 w-full will-change-transform">
         <div class="flex items-center justify-between">
           <div class="rise-in max-w-2xl">
             <h1 class="font-song text-7xl sm:text-8xl font-bold tracking-[0.42em] text-xuanzhi drop-shadow-lg">诗象志</h1>
@@ -53,9 +55,31 @@
       </div>
       <!-- 底部渐隐入宣纸 -->
       <div class="absolute bottom-0 left-0 w-full h-16" style="background: linear-gradient(180deg, transparent, #F5F1E8)"></div>
+      <!-- 下滑提示 -->
+      <div class="absolute bottom-5 left-1/2 -translate-x-1/2 text-xuanzhi/60 flex flex-col items-center gap-1 pointer-events-none">
+        <span class="text-[10px] tracking-[0.3em]">向下滚动</span>
+        <svg class="w-4 h-4 animate-bounce" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
     </section>
 
-    <div class="ink-divider max-w-4xl mx-auto"></div>
+    <!-- 艺术品滚动封面（实时滚动 · 封面比例） -->
+    <section class="relative z-10 -mt-8 px-0" aria-label="艺术品滚动封面">
+      <div class="art-marquee" @mouseenter="marqueePaused = true" @mouseleave="marqueePaused = false">
+        <div class="art-marquee__track" :class="{ 'is-paused': marqueePaused }">
+          <div v-for="round in 2" :key="'r' + round" class="flex shrink-0">
+            <div v-for="a in marqueeArtworks" :key="round + '-' + a.id" class="art-marquee__item" @click="openArtPreview(a)">
+              <img :src="a.thumb_url || a.image_url" :alt="a.name" class="w-full h-full object-cover" loading="lazy" decoding="async" />
+              <div class="art-marquee__label">
+                <span class="font-song">《{{ a.name }}》</span>
+                <span class="text-[10px] opacity-70">{{ a.dynasty_period || a.dynasty_main }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="ink-divider max-w-4xl mx-auto mt-10"></div>
 
     <!-- 意象精选 -->
     <section class="max-w-6xl mx-auto px-4 py-16">
@@ -132,25 +156,44 @@
       </div>
     </section>
 
-    <!-- 项目简介 -->
-    <section class="bg-white/40 border-y border-shiqing/10">
+    <!-- 三大核心价值 -->
+    <section class="relative overflow-hidden">
       <div class="max-w-6xl mx-auto px-4 py-16">
         <SectionTitle>三大核心价值</SectionTitle>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-          <div v-for="(f, i) in features" :key="f.title" class="card card-hover p-6 rise-in" :style="{ animationDelay: i * 0.1 + 's' }">
-            <div class="w-11 h-11 rounded-md flex items-center justify-center text-xl text-xuanzhi font-kai" :style="{ background: f.color }">{{ f.icon }}</div>
+          <div v-for="(f, i) in features" :key="f.title"
+            class="feature-card rise-in" :style="{ animationDelay: i * 0.1 + 's', '--accent': f.color }">
+            <div class="feature-card__watermark font-kai">{{ f.watermark }}</div>
+            <div class="w-12 h-12 rounded-lg flex items-center justify-center text-2xl text-xuanzhi font-kai shadow-lg"
+              :style="{ background: 'linear-gradient(135deg,' + f.color + ',' + f.color + 'cc)' }">{{ f.icon }}</div>
             <h3 class="font-song text-lg font-semibold mt-4">{{ f.title }}</h3>
             <p class="text-sm text-qianhui leading-7 mt-2">{{ f.desc }}</p>
+            <div class="mt-4 h-0.5 w-8 rounded-full" :style="{ background: f.color, opacity: 0.5 }"></div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- AI 助手入口 -->
-    <section class="max-w-6xl mx-auto px-4 py-16 text-center">
-      <p class="font-kai text-2xl text-moyan/80">「月」在古诗里有哪些含义？</p>
-      <p class="font-kai text-2xl text-moyan/80 mt-2">「夕阳」为何总与离愁相伴？</p>
-      <router-link to="/agent" class="btn-primary mt-8">向灵犀助手提问</router-link>
+    <!-- AI 助手入口 · 向灵犀提问 -->
+    <section class="relative overflow-hidden">
+      <div class="max-w-5xl mx-auto px-4">
+        <div class="ai-hero rounded-2xl px-6 py-12 sm:px-12 text-center relative overflow-hidden">
+          <div class="absolute -top-16 -right-16 w-64 h-64 rounded-full opacity-20" style="background: radial-gradient(circle, #F5F1E8, transparent 70%)"></div>
+          <div class="absolute -bottom-20 -left-10 w-56 h-56 rounded-full opacity-10" style="background: radial-gradient(circle, #F5F1E8, transparent 70%)"></div>
+          <span class="seal !w-12 !h-12 !text-base mx-auto">问</span>
+          <h3 class="font-song text-2xl sm:text-3xl font-bold mt-5 text-xuanzhi">向灵犀助手提问</h3>
+          <p class="text-sm text-xuanzhi/70 mt-3 leading-6">不懂意象？不会赏析？一键唤起灵犀，随时陪你读诗、解诗、写诗。</p>
+          <div class="flex flex-wrap justify-center gap-2.5 mt-6">
+            <button v-for="q in aiPrompts" :key="q" @click="askAi(q)"
+              class="px-4 py-2 rounded-full text-sm text-xuanzhi/90 border border-xuanzhi/30 hover:bg-xuanzhi hover:text-shiqing transition-all">
+              {{ q }}
+            </button>
+          </div>
+          <div class="mt-8">
+            <router-link to="/agent" class="btn-primary !bg-xuanzhi !text-shiqing hover:!bg-white shadow-lg !px-8">进入灵犀助手 →</router-link>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- 随缘一象 · 竹筒求签 -->
@@ -236,7 +279,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getArtworkDetail, getArtworkList, getConceptList } from '../api'
 import ConceptCard from '../components/ConceptCard.vue'
 import ParticleCanvas from '../components/ParticleCanvas.vue'
@@ -248,6 +291,10 @@ const allConcepts = ref([])
 const artworks = ref([])
 const previewArt = ref(null)
 const previewLoading = ref(false)
+const marqueeArtworks = ref([])
+// 预览弹窗打开时锁定背景滚动
+watch(previewArt, (v) => { document.body.style.overflow = v ? 'hidden' : '' })
+const marqueePaused = ref(false)
 async function openArtPreview(a) {
   previewArt.value = a; previewLoading.value = true
   try { const d = await getArtworkDetail(a.id); if (d) previewArt.value = { ...a, ...d } } catch {}
@@ -256,10 +303,41 @@ async function openArtPreview(a) {
 const loading = ref(true)
 const lastIndices = ref([])      // 上一批展示的索引，避免重复
 
+// 首页封面视差层
+const moonWrap = ref(null)
+const mountEl = ref(null)
+const heroContent = ref(null)
+let scrollTick = false
+function onScroll() {
+  if (scrollTick) return
+  scrollTick = true
+  requestAnimationFrame(() => {
+    const y = window.scrollY
+    if (y < window.innerHeight * 1.2) {
+      if (moonWrap.value) moonWrap.value.style.transform = 'translateY(' + (y * 0.28) + 'px)'
+      if (mountEl.value) mountEl.value.style.transform = 'translateY(' + (y * 0.12) + 'px)'
+      if (heroContent.value) {
+        heroContent.value.style.transform = 'translateY(' + (y * 0.05) + 'px)'
+        heroContent.value.style.opacity = Math.max(0, 1 - y / (window.innerHeight * 0.7))
+      }
+    }
+    scrollTick = false
+  })
+}
+
+const aiPrompts = [
+  '「月」在古诗里有哪些含义？',
+  '夕阳为何总与离愁相伴？',
+  '用「柳」写一首七言绝句',
+]
+function askAi(q) {
+  window.dispatchEvent(new CustomEvent('sxz-ask', { detail: q }))
+}
+
 const features = [
-  { icon: '变', color: '#2B4C7E', title: '意象演变', desc: '朝代时间轴 × 频次折线 × 情感环形图，用数据讲清一个意象的兴衰流变与情感变迁。' },
-  { icon: '画', color: '#9B4423', title: '诗画互证', desc: '每个意象匹配对应古画，见意象知画意，观古画品诗情，打通诗文库与艺术品库。' },
-  { icon: '问', color: '#5B7C5F', title: '智能问答', desc: '基于自建意象知识库的轻量 RAG 问答与格律创诗，回答全部锚定本地权威数据。' },
+  { icon: '变', color: '#2B4C7E', watermark: '变', title: '意象演变', desc: '朝代时间轴 × 频次折线 × 情感环形图，用数据讲清一个意象的兴衰流变与情感变迁。' },
+  { icon: '画', color: '#9B4423', watermark: '画', title: '诗画互证', desc: '每个意象匹配对应古画，见意象知画意，观古画品诗情，打通诗文库与艺术品库。' },
+  { icon: '问', color: '#5B7C5F', watermark: '问', title: '智能问答', desc: '基于自建意象知识库的轻量 RAG 问答与格律创诗，回答全部锚定本地权威数据。' },
 ]
 
 function pickBatch(pool, count, excludeIndices) {
@@ -305,15 +383,30 @@ onMounted(async () => {
   }
   // 艺术品精选：取精选池
   try {
-    const art = await getArtworkList({ featured: true, page_size: 4 })
+    const art = await getArtworkList({ featured: true, page_size: 8 })
     artworks.value = art.items
-    // 无精选时降级为最新4幅
+    // 无精选时降级为最新8幅
     if (!artworks.value.length) {
-      const fallback = await getArtworkList({ page: 1, page_size: 4 })
+      const fallback = await getArtworkList({ page: 1, page_size: 8 })
       artworks.value = fallback.items
     }
   } catch { artworks.value = [] }
+  // 滚动封面：优先「精选」艺术品，不足时补最新
+  try {
+    const feat = await getArtworkList({ featured: true, page_size: 16 })
+    let pool = feat.items && feat.items.length ? feat.items : []
+    if (pool.length < 8) {
+      const more = await getArtworkList({ page: 1, page_size: 16 })
+      const seen = new Set(pool.map((a) => a.id))
+      for (const a of more.items) {
+        if (!seen.has(a.id)) { pool.push(a); seen.add(a.id) }
+      }
+    }
+    marqueeArtworks.value = pool.slice(0, 16)
+  } catch { marqueeArtworks.value = artworks.value }
+  window.addEventListener('scroll', onScroll, { passive: true })
 })
+onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
 
 const lotteryOpen = ref(false)
 const lotteryRunning = ref(false)
@@ -359,6 +452,58 @@ function goLottery() {
 <style scoped>
 .fade-enter-active, .fade-leave-active { transition: opacity 0.35s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* ── 艺术品滚动封面 ── */
+.art-marquee {
+  overflow: hidden; padding: 8px 0;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+}
+.art-marquee__track {
+  display: flex; width: max-content;
+  animation: art-marquee 48s linear infinite;
+}
+.art-marquee__track.is-paused { animation-play-state: paused; }
+.art-marquee__item {
+  position: relative; width: 240px; height: 150px; margin-right: 16px;
+  flex-shrink: 0; overflow: hidden; border-radius: 10px; cursor: pointer;
+  box-shadow: 0 4px 18px rgba(20,30,50,0.18);
+  border: 1px solid rgba(245,241,232,0.5);
+  transition: transform 0.3s;
+}
+.art-marquee__item:hover { transform: translateY(-4px) scale(1.02); }
+.art-marquee__item img { display: block; }
+.art-marquee__label {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 18px 10px 8px; display: flex; flex-direction: column; gap: 1px;
+  color: #F5F1E8; font-size: 12px;
+  background: linear-gradient(180deg, transparent, rgba(15,25,42,0.75));
+}
+@keyframes art-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+/* ── 三大核心价值卡片 ── */
+.feature-card {
+  position: relative; overflow: hidden;
+  background: rgba(255,255,255,0.6); border: 1px solid rgba(0,0,0,0.05);
+  border-radius: 10px; padding: 24px; cursor: default;
+  box-shadow: 0 2px 12px rgba(44,44,44,0.06);
+  transition: transform 0.35s, box-shadow 0.35s, border-color 0.35s;
+}
+.feature-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 16px 34px rgba(44,44,44,0.13);
+  border-color: var(--accent);
+}
+.feature-card__watermark {
+  position: absolute; right: -6px; top: -14px; font-size: 96px; line-height: 1;
+  color: var(--accent); opacity: 0.06; pointer-events: none; user-select: none;
+}
+
+/* ── AI 助手入口 ── */
+.ai-hero {
+  background: linear-gradient(135deg, #16283F 0%, #2B4C7E 55%, #3A5A8C 100%);
+  box-shadow: 0 18px 48px rgba(43,76,126,0.35);
+}
 @keyframes shake {
   0%,100% { transform: rotate(0deg) translateY(0); }
   8%  { transform: rotate(-5deg) translateY(-1px); }

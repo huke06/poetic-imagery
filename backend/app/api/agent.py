@@ -12,7 +12,8 @@ router = APIRouter(prefix="/api/agent", tags=["智能助手"])
 @router.post("/ask")
 def agent_ask(req: AskReq, db: Session = Depends(get_db)):
     """智能问答：本地知识库检索 + 模板/大模型生成，回答全部锚定库中数据"""
-    return ApiResp(data=agent_service.ask(db, req.question))
+    history = [m for m in (req.history or []) if isinstance(m, dict) and m.get("content")]
+    return ApiResp(data=agent_service.ask(db, req.question, history or None))
 
 
 @router.post("/compose")

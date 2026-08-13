@@ -39,20 +39,30 @@
     </div>
 
     <!-- 瀑布网格 -->
-    <div v-if="loading" class="py-20 text-center text-qianhui">加载中…</div>
+    <div v-if="loading && !items.length" class="py-20 text-center text-qianhui">加载中…</div>
     <div v-else-if="!items.length" class="py-20 text-center text-qianhui">未找到匹配的艺术品</div>
-    <div v-else class="columns-1 sm:columns-2 lg:columns-3 gap-6 mt-8 [&>div]:mb-6">
-      <div v-for="(a, i) in items" :key="a.id"
-        class="card card-hover overflow-hidden cursor-pointer break-inside-avoid rise-in"
-        :style="{ animationDelay: (i % 6) * 0.06 + 's' }"
-        @click="openDetail(a.id)">
-        <!-- 封面自动匹配作品图，加载失败回退大图 -->
-        <img :src="a.thumb_url || a.image_url" :alt="a.name" class="w-full object-cover" loading="lazy"
-          @error="(e) => { if (e.target.src !== a.image_url) e.target.src = a.image_url }" />
-        <div class="p-4">
-          <h3 class="font-song font-semibold">《{{ a.name }}》</h3>
-          <p class="text-xs text-qianhui mt-1">{{ a.dynasty_period || a.dynasty_main }} · {{ a.artist }}</p>
+    <div v-else>
+      <div class="columns-1 sm:columns-2 lg:columns-3 gap-6 mt-8 [&>div]:mb-6">
+        <div v-for="(a, i) in items" :key="a.id"
+          class="card card-hover overflow-hidden cursor-pointer break-inside-avoid rise-in gallery-card"
+          :style="{ animationDelay: (i % 6) * 0.06 + 's' }"
+          @click="openDetail(a.id)">
+          <!-- 封面自动匹配作品图，加载失败回退大图 -->
+          <img :src="a.thumb_url || a.image_url" :alt="a.name" class="w-full object-cover" loading="lazy" decoding="async"
+            @error="(e) => { if (e.target.src !== a.image_url) e.target.src = a.image_url }" />
+          <div class="p-4">
+            <h3 class="font-song font-semibold">《{{ a.name }}》</h3>
+            <p class="text-xs text-qianhui mt-1">{{ a.dynasty_period || a.dynasty_main }} · {{ a.artist }}</p>
+          </div>
         </div>
+      </div>
+      <!-- 加载更多哨兵 / 按钮 -->
+      <div ref="sentinel" class="py-8 flex items-center justify-center gap-3 text-sm text-qianhui">
+        <template v-if="hasMore">
+          <span v-if="loadingMore" class="animate-pulse">加载中…</span>
+          <button v-else class="btn-outline !py-1.5 !px-5 !text-xs" @click="loadMore">加载更多</button>
+        </template>
+        <span v-else-if="items.length">— 已全部展示 · 共 {{ items.length }} 件 —</span>
       </div>
     </div>
 
@@ -125,7 +135,7 @@
 </template>
 
 <script setup>
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { getArtworkDetail, getArtworkList } from '../api'
 import SectionTitle from '../components/SectionTitle.vue'
@@ -139,8 +149,15 @@ const subject = ref('')
 const keyword = ref('')
 const totalCount = ref(0)
 const loading = ref(true)
+const loadingMore = ref(false)
+const hasMore = ref(true)
 const detail = ref(null)
 const fullscreen = ref(false)
+const sentinel = ref(null)
+
+const PAGE_SIZE = 48
+let currentPage = 1
+let observer = null
 
 // 缩放/放大镜
 const zoom = ref(1)
@@ -192,24 +209,43 @@ function onEsc(e) {
   if (e.key === 'Escape') { if (fullscreen.value) exitFullscreen(); else if (detail.value) closeDetail() }
 }
 
-async function load() {
-  loading.value = true
-  items.value = []
+async function load(reset = true) {
+  if (reset) {
+    loading.value = true
+    items.value = []
+    currentPage = 1
+    hasMore.value = true
+  }
   try {
-    // 首屏快速加载，后续增量追加
-    let page = 1
-    const data = await getArtworkList({ dynasty: dynasty.value, subject: subject.value, keyword: keyword.value, page, page_size: 200 })
-    items.value = data.items
+    const data = await getArtworkList({ dynasty: dynasty.value, subject: subject.value, keyword: keyword.value, page: currentPage, page_size: PAGE_SIZE })
+    items.value = reset ? data.items : [...items.value, ...data.items]
     filters.value = data.filters
-    totalCount.value = data.filters.dynasties.reduce((s, d) => s + d.count, 0)
+    totalCount.value = data.total
+    hasMore.value = items.value.length < data.total && data.items.length === PAGE_SIZE
+    currentPage += 1
+  } catch {
+    hasMore.value = false
+  } finally {
     loading.value = false
-    // 后台加载剩余
-    while (data.items.length >= 50) {
-      page++
-      const more = await getArtworkList({ dynasty: dynasty.value, subject: subject.value, keyword: keyword.value, page, page_size: 200 })
-      items.value = [...items.value, ...more.items]
-    }
-  } catch { loading.value = false }
+    loadingMore.value = false
+  }
+}
+
+async function loadMore() {
+  if (loading.value || loadingMore.value || !hasMore.value) return
+  loadingMore.value = true
+  await load(false)
+}
+
+function ensureObserver() {
+  nextTick(() => {
+    if (observer) observer.disconnect()
+    if (!sentinel.value || !hasMore.value) return
+    observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) loadMore()
+    }, { rootMargin: '400px' })
+    observer.observe(sentinel.value)
+  })
 }
 
 // 某朝代的作品数（用于唐/宋快捷按钮）
@@ -224,16 +260,32 @@ function toggleDynasty(name) {
 
 async function openDetail(id) { detail.value = await getArtworkDetail(id) }
 
+// 详情弹窗打开时锁定背景滚动，避免鼠标在卡片外滚动导致页面/艺术品跟着滚动
+watch(detail, (v) => { document.body.style.overflow = v ? 'hidden' : '' })
+watch(fullscreen, (v) => { if (v) document.body.style.overflow = 'hidden' })
+watch([hasMore, loading], () => ensureObserver())
+
 onMounted(async () => {
   document.addEventListener('keydown', onEsc)
   document.addEventListener('keydown', onKeyToggle)
   document.addEventListener('keyup', onKeyRelease)
   load()
+  ensureObserver()
   if (route.query.id) openDetail(Number(route.query.id))
 })
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onEsc)
   document.removeEventListener('keydown', onKeyToggle)
   document.removeEventListener('keyup', onKeyRelease)
+  document.body.style.overflow = ''
+  if (observer) observer.disconnect()
 })
 </script>
+
+<style scoped>
+/* 画廊卡片：content-visibility 跳过屏外渲染，减少快速滚动时的布局抖动 */
+.gallery-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px;
+}
+</style>

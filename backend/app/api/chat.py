@@ -149,4 +149,5 @@ def send_message(
         "conversation_id": conv.id, "title": conv.title,
         "message": {"id": am.id, "role": "ai", "text": am.text, "source": am.source,
                      "references": refs, "create_time": str(am.create_time)},
+        "suggestions": data.get("suggestions", []),
     })

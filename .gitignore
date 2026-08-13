@@ -17,6 +17,9 @@ backend/*.db
 *.db.bak
 backend/*.db.bak
 
+# ── 向量库本地索引（ChromaDB，可由脚本重建）──
+backend/chroma_data/
+
 # ── 本地原始导入数据与参考素材（非源码，体积大）──
 测试数据/
 others/

@@ -56,7 +56,7 @@ export const adminUploadAtlasImage = (id, file) => {
 export const adminSaveAtlasDots = (id, dots) => admin.put(`/api/atlas/admin/${id}/dots`, { dots })
 
 // ─────────── 智能助手 ───────────
-export const agentAsk = (question) => http.post('/api/agent/ask', { question })
+export const agentAsk = (question, history = []) => http.post('/api/agent/ask', { question, history })
 export const agentCompose = (payload) => http.post('/api/agent/compose', payload)
 
 // ─────────── 管理后台 ───────────
@@ -85,6 +85,9 @@ admin.interceptors.response.use(
 )
 
 export const adminOverview = () => admin.get('/api/admin/overview')
+export const adminVectorIndexStatus = () => admin.get('/api/admin/vector-index/status')
+export const adminVectorIndexRebuild = () => admin.post('/api/admin/vector-index/rebuild')
+export const adminVectorIndexRefresh = () => admin.post('/api/admin/vector-index/refresh')
 export const getAdminConfig = () => admin.get('/api/admin/config')
 export const putAdminConfig = (changes) => admin.put('/api/admin/config', { changes })
 export const getPalette = (params) => admin.get('/api/admin/palette', { params })
@@ -103,6 +106,7 @@ export const adminArtworkList = (params) => admin.get('/api/admin/artwork/list',
 export const adminCreateArtwork = (payload) => admin.post('/api/admin/artwork', payload)
 export const adminUpdateArtwork = (id, payload) => admin.put(`/api/admin/artwork/${id}`, payload)
 export const adminDeleteArtwork = (id) => admin.delete(`/api/admin/artwork/${id}`)
+export const adminToggleArtworkHomeFeature = (id, featured) => admin.post(`/api/admin/artwork/${id}/home-feature`, null, { params: { featured } })
 export const adminUploadImage = (id, file) => {
   const fd = new FormData()
   fd.append('file', file)
