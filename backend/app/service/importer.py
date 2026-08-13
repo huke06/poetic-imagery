@@ -188,17 +188,32 @@ def import_concept_data(db: Session, data: dict, with_svg: bool = True) -> dict:
         db.flush()
         report["concept_created"] = True
     else:
+        # 桥接词强制升级：导入表中出现的意象不能保持桥接词状态
+        is_bridge = (concept.category_sub == "桥接词")
+        if is_bridge:
+            concept.category_sub = cdata.get("category_sub") or "自然类"
+            if concept.category_main == "" or concept.category_main == "自然类":
+                concept.category_main = cdata.get("category_main") or "自然类"
+            concept.theme_color = cdata.get("theme_color") or assign_color(concept.name, concept.category_main)["color"]
+            if cdata.get("emotion_tags"):
+                concept.emotion_tags = _norm_tags(cdata["emotion_tags"])
         # 已存在时补充缺失的描述类字段（不覆盖已有内容）
         for f in ("aliases", "original_meaning", "poetic_meaning", "origin_dynasty", "peak_dynasty", "description",
                   "category_main", "category_sub"):
-            if cdata.get(f) and (not getattr(concept, f, None) or (f in ("category_main", "category_sub") and not getattr(concept, f, None))):
-                if f == "category_main" and not concept.category_main:
-                    concept.category_main = cdata[f]
-                elif f == "category_sub" and not concept.category_sub:
-                    concept.category_sub = cdata[f]
-                elif f not in ("category_main", "category_sub"):
-                    if not getattr(concept, f, None):
-                        setattr(concept, f, cdata[f])
+            if cdata.get(f) and not getattr(concept, f, None):
+                if f == "emotion_tags":
+                    concept.emotion_tags = _norm_tags(cdata[f])
+                elif f == "category_sub":
+                    if not concept.category_sub or concept.category_sub == "桥接词":
+                        concept.category_sub = cdata[f]
+                elif f == "category_main":
+                    if not concept.category_main:
+                        concept.category_main = cdata[f]
+                else:
+                    setattr(concept, f, cdata[f])
+        # emotion_tags 允许直接覆盖（导入表为准）
+        if cdata.get("emotion_tags"):
+            concept.emotion_tags = _norm_tags(cdata["emotion_tags"])
 
     # 诗文与关联
     for p in data.get("poetries", []):
@@ -294,6 +309,7 @@ def import_concept_data(db: Session, data: dict, with_svg: bool = True) -> dict:
             if not db.query(ConceptArtworkRel).filter_by(concept_id=concept.id, artwork_id=artwork.id).first():
                 db.add(ConceptArtworkRel(concept_id=concept.id, artwork_id=artwork.id,
                                          relation_desc=a.get("relation_desc", ""), weight=int(a.get("weight", 1))))
+                db.flush()
 
     # 意象-意象关联（v3：聚焦共现）
     for rel in data.get("relations", []):
@@ -628,6 +644,7 @@ def import_artworks_csv(db: Session, rows: list[dict]) -> dict:
                     db.add(ConceptArtworkRel(concept_id=concept.id, artwork_id=artwork.id,
                                              relation_desc=r.get("relation_desc", ""), weight=2,
                                              is_featured=is_feat))
+                    db.flush()
                     report["rel_new"] += 1
     return report
 
