@@ -192,14 +192,19 @@ def _build_rag_prompt(concepts, poetries, artworks, question, shared_pids, menti
 
 
 def _parse_citations(text: str, max_idx: int) -> list[int]:
-    """提取回答中出现的合法 [n] 角标（去重、按出现顺序）"""
+    """提取回答中出现的合法 [n]/〔n〕 角标（去重、按出现顺序）"""
     import re
     seen = []
-    for m in re.findall(r"\[(\d+)\]", text):
+    for m in re.findall(r"[\[〔](\d+)[\]〕]", text):
         n = int(m)
         if 1 <= n <= max_idx and n not in seen:
             seen.append(n)
     return seen
+
+
+def _normalize_brackets(text: str) -> str:
+    """把全角 〔n〕 角标统一成半角 [n]，便于解析与前端渲染"""
+    return re.sub(r"〔(\d+)〕", r"[\1]", text)
 
 
 def _find_mentioned_poems(db: Session, text: str) -> list[dict]:
@@ -418,12 +423,16 @@ def ask(db: Session, question: str, context_msgs: list[dict] | None = None) -> d
             lines = []
             for m in context_msgs[-6:]:
                 role = "用户" if m["role"] == "user" else "助手"
-                lines.append(f"{role}：{m['content'][:250]}")
+                # 去掉历史消息里残留的引用角标，避免 LLM 沿用旧编号
+                content = re.sub(r"[\[〔]\d+[\]〕]", "", m["content"][:250])
+                lines.append(f"{role}：{content}")
             if lines:
                 system_text += (
                     "\n\n=== 对话历史 ===\n"
                     "用户当前提问可能引用历史内容(如 他/这首诗/该作者 等指代词), "
-                    "你必须根据以下历史解析指代, 不得当作独立新问题。\n"
+                    "你必须根据以下历史解析指代, 不得当作独立新问题。"
+                    "历史中若残留 [数字] 引用编号，是过去对话的编号，与当前资料无关，请忽略，"
+                    "只用当前资料中的 [数字] 角标。\n"
                     + "\n".join(lines)
                 )
         mentioned_titles = {m["title"] for m in _find_mentioned_poems(db, question)}
@@ -432,6 +441,8 @@ def ask(db: Session, question: str, context_msgs: list[dict] | None = None) -> d
                 {"role": "user", "content": prompt}]
         answer = llm.chat(msgs)
         if answer:
+            # 全角〔n〕统一成半角[n]，便于解析与前端渲染
+            answer = _normalize_brackets(answer)
             # ── 收集引用：确定性 [n] 角标 + 回答中明确提到的《篇名》/意象名 ──
             cited_idx = _parse_citations(answer, len(refs))
             ref_by_idx = {r["idx"]: r for r in refs}
@@ -470,10 +481,9 @@ def ask(db: Session, question: str, context_msgs: list[dict] | None = None) -> d
                 if _add(r):
                     fallback_poems.append((t, r))
 
-            # 补扫意象名/别称
+            # 补扫意象名（仅规范名≥2字，跳过单字/别称噪音）
             for c in concepts:
-                names = [c.name] + [a for a in (c.aliases or "").split(",") if a]
-                if any(n and n in answer for n in names):
+                if c.name and len(c.name) >= 2 and c.name in answer:
                     _add({"type": "concept", "concept_id": c.id, "name": c.name})
 
             if not cited:
@@ -495,6 +505,14 @@ def ask(db: Session, question: str, context_msgs: list[dict] | None = None) -> d
             for title, r in fallback_poems:
                 anchor = f"《{title}》"
                 answer = answer.replace(anchor, f"{anchor}[{r['idx']}]", 1)
+
+            # 清除无法映射的悬空角标（如 LLM 沿用上一轮的历史编号）
+            n_cited = len(cited)
+            answer = re.sub(
+                r"\[(\d+)\]",
+                lambda m: m.group(0) if int(m.group(1)) <= n_cited else "",
+                answer,
+            )
 
             poetries_refs, concepts_refs, artworks_refs = [], [], []
             for r in cited:
