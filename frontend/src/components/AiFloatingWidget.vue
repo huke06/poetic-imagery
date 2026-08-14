@@ -33,10 +33,13 @@
             <div v-if="m.role === 'user'" class="flex justify-end">
               <span class="ai-bubble-user">{{ m.text }}</span>
             </div>
-            <div v-else class="flex flex-col items-start">
+            <div v-else class="flex flex-col items-start" @click="onCiteClick($event, i)">
               <span class="ai-bubble-ai" v-html="renderText(m.text)"></span>
               <div v-if="m.refs && m.refs.length" class="flex flex-wrap gap-1 mt-1.5">
-                <button v-for="r in m.refs" :key="r.key" class="ai-ref" @click="goRef(r.to)">{{ r.label }}</button>
+                <button v-for="r in m.refs" :key="r.key" :id="r.idx != null ? 'ai-cite-' + i + '-' + r.idx : null"
+                  class="ai-ref" @click="goRef(r.to)">
+                  <span v-if="r.idx != null" class="ai-ref-idx">[{{ r.idx }}]</span>{{ r.label }}
+                </button>
               </div>
             </div>
           </div>
@@ -100,6 +103,7 @@ function renderText(text) {
     .replace(/`(.+?)`/g, '<code>$1</code>')
     .replace(new RegExp(String.fromCharCode(10), 'g'), '<br>')
     .replace(/^[-·•]\s?(.+)$/gm, '· $1')
+    .replace(/\[(\d+)\]/g, '<sup class="cite-link" data-cite="$1">[$1]</sup>')
 }
 
 async function send(q) {
@@ -136,11 +140,32 @@ const router = useRouter()
 function buildRefs(references) {
   if (!references) return []
   const out = []
-  const push = (kind, label, to) => out.push({ kind, label, to, key: kind + to + label })
-  for (const p of references.poetries || []) push('poetry', '《' + p.title + '》', '/poetry/' + p.poetry_id)
+  const cits = references.citations
+  if (Array.isArray(cits) && cits.length) {
+    for (const r of cits) {
+      if (r.type === 'poetry') out.push({ idx: r.idx, kind: 'poetry', label: '《' + (r.title || '') + '》', to: '/poetry/' + r.poetry_id, key: 'c' + r.idx })
+      else if (r.type === 'concept') out.push({ idx: r.idx, kind: 'concept', label: r.name, to: '/concept/' + r.concept_id, key: 'c' + r.idx })
+      else if (r.type === 'artwork') out.push({ idx: r.idx, kind: 'artwork', label: '《' + (r.name || '') + '》', to: '/artworks?id=' + r.artwork_id, key: 'c' + r.idx })
+    }
+    return out.slice(0, 8)
+  }
+  const push = (kind, label, to) => out.push({ idx: null, kind, label, to, key: kind + to + label })
+  for (const p of references.poetries || []) push('poetry', '《' + (p.title || '') + '》', '/poetry/' + p.poetry_id)
   for (const c of references.concepts || []) push('concept', c.name, '/concept/' + c.id)
-  for (const a of references.artworks || []) push('artwork', '《' + a.name + '》', '/artworks?id=' + a.id)
+  for (const a of references.artworks || []) push('artwork', '《' + (a.name || '') + '》', '/artworks?id=' + a.id)
   return out.slice(0, 6)
+}
+
+function onCiteClick(e, msgIdx) {
+  const sup = e.target && e.target.closest ? e.target.closest('.cite-link') : null
+  if (!sup) return
+  const n = sup.getAttribute('data-cite')
+  const el = document.getElementById('ai-cite-' + msgIdx + '-' + n)
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    el.classList.add('ai-ref-flash')
+    setTimeout(() => el.classList.remove('ai-ref-flash'), 1800)
+  }
 }
 function goRef(to) { router.push(to) }
 
@@ -219,6 +244,10 @@ onBeforeUnmount(() => window.removeEventListener('sxz-ask', onAskEvent))
   background: rgba(43,76,126,0.05); cursor: pointer; transition: all 0.15s;
 }
 .ai-ref:hover { background: rgba(43,76,126,0.12); border-color: #2B4C7E; }
+.ai-ref-idx { color: #2B4C7E; font-weight: 700; margin-right: 2px; }
+.ai-ref-flash { background: rgba(43,76,126,0.14) !important; box-shadow: 0 0 0 2px rgba(43,76,126,0.35); }
+.cite-link { color: #2B4C7E; font-weight: 700; cursor: pointer; font-size: 0.75em; vertical-align: super; line-height: 0; padding: 0 1px; }
+.cite-link:hover { text-decoration: underline; }
 .thinking-dots {
   display: flex; align-items: center; gap: 3px;
   padding: 10px 16px;

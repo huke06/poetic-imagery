@@ -148,9 +148,10 @@ def _build_rag_prompt(concepts, poetries, artworks, question, shared_pids, menti
         for c in concepts:
             idx = add_ref(type="concept", concept_id=c.id, name=c.name)
             parts.append(f"[{idx}]「{c.name}」{c.poetic_meaning[:120]} 情感标签：{c.emotion_tags}")
-    # 共享作品
+    # 共享作品（排除已在上面置顶提及的，避免重复）
+    _mt = mentioned_titles or set()
     if shared_pids:
-        shared_info = [p for p in poetries if p["shared"]][:6]
+        shared_info = [p for p in poetries if p["shared"] and p["title"] not in _mt][:6]
         if shared_info:
             parts.append("【⚠ 以下作品同时包含这些意象——优先引用】")
             for p in shared_info:
@@ -158,8 +159,8 @@ def _build_rag_prompt(concepts, poetries, artworks, question, shared_pids, menti
                 idx = add_ref(type="poetry", poetry_id=p["poetry_id"], title=p["title"],
                               author=p["author"], dynasty=p["dynasty"], clause=clauses)
                 parts.append(f"[{idx}]《{p['title']}》（{p['dynasty']}·{p['author']}）：{clauses}")
-    # 非共享名句
-    unshared = [p for p in poetries if not p["shared"]][:10]
+    # 非共享名句（排除已置顶提及的，避免重复）
+    unshared = [p for p in poetries if not p["shared"] and p["title"] not in _mt][:10]
     if unshared:
         parts.append("【其他关联名句】")
         for p in unshared:
@@ -431,22 +432,70 @@ def ask(db: Session, question: str, context_msgs: list[dict] | None = None) -> d
                 {"role": "user", "content": prompt}]
         answer = llm.chat(msgs)
         if answer:
-            # 确定性引用：把 LLM 标注的 [n] 角标映射回真实链接，并按出现顺序重排成 1,2,3…
+            # ── 收集引用：确定性 [n] 角标 + 回答中明确提到的《篇名》/意象名 ──
             cited_idx = _parse_citations(answer, len(refs))
             ref_by_idx = {r["idx"]: r for r in refs}
-            if cited_idx:
-                # 按回答中出现顺序取引用，并重排成连续 1,2,3…
-                cited = [ref_by_idx[i] for i in cited_idx]
-                mapping = {old: new for new, old in enumerate(cited_idx, 1)}
+            cited = [ref_by_idx[i] for i in cited_idx] if cited_idx else []
+
+            def _cite_key(r):
+                return (r.get("type"), r.get("poetry_id") or r.get("concept_id") or r.get("artwork_id"))
+
+            seen = {_cite_key(r) for r in cited}
+
+            def _add(r):
+                k = _cite_key(r)
+                if k in seen:
+                    return False
+                seen.add(k)
+                cited.append(r)
+                return True
+
+            # 补扫《篇名》：本地库有、但 LLM 未标角标的，自动补入引用并在文中追加角标
+            fallback_poems = []
+            for title in re.findall(r"《(.+?)》", answer):
+                t = title.strip()
+                if not t:
+                    continue
+                p = next((x for x in poetries if x["title"] == t), None)
+                if p:
+                    r = {"type": "poetry", "poetry_id": p["poetry_id"], "title": p["title"],
+                         "author": p["author"], "dynasty": p["dynasty"],
+                         "clause": "；".join(c["clause"] for c in p["clauses"][:2])}
+                else:
+                    mp = db.query(Poetry).filter_by(title=t).first()
+                    if not mp:
+                        continue
+                    r = {"type": "poetry", "poetry_id": mp.id, "title": mp.title,
+                         "author": mp.author, "dynasty": mp.dynasty, "clause": ""}
+                if _add(r):
+                    fallback_poems.append((t, r))
+
+            # 补扫意象名/别称
+            for c in concepts:
+                names = [c.name] + [a for a in (c.aliases or "").split(",") if a]
+                if any(n and n in answer for n in names):
+                    _add({"type": "concept", "concept_id": c.id, "name": c.name})
+
+            if not cited:
+                cited = refs[:8]
+
+            # 重编号 1..N，并改写回答正文里的角标
+            mapping = {}
+            for i, r in enumerate(cited, 1):
+                old = r.get("idx")
+                r["idx"] = i
+                if old and old != i:
+                    mapping[old] = i
+            if mapping:
                 answer = re.sub(
                     r"\[(\d+)\]",
                     lambda m: f"[{mapping[int(m.group(1))]}]" if int(m.group(1)) in mapping else m.group(0),
                     answer,
                 )
-                for i, r in enumerate(cited, 1):
-                    r["idx"] = i
-            else:
-                cited = refs[:8]  # 未标角标时退化为返回前若干资料
+            for title, r in fallback_poems:
+                anchor = f"《{title}》"
+                answer = answer.replace(anchor, f"{anchor}[{r['idx']}]", 1)
+
             poetries_refs, concepts_refs, artworks_refs = [], [], []
             for r in cited:
                 if r["type"] == "poetry":
