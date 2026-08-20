@@ -124,15 +124,17 @@
         </div>
         <!-- 共现知识图谱（缩略） -->
         <div class="card p-5 flex flex-col justify-between">
-          <div>
+          <div class="flex flex-col flex-1 min-h-[340px]">
             <div class="flex items-center justify-between mb-2">
               <h3 class="text-sm text-qianhui tracking-widest">共现知识图谱</h3>
               <button v-if="cooc.edges?.length" class="btn-primary !py-1 !px-4 !text-xs transition-all duration-300 hover:scale-105 hover:shadow-lg" @click="showExplorer = true">
                 探索 <span class="ml-0.5">⤢</span>
               </button>
             </div>
-            <CooccurrenceMiniGraph v-if="cooc.edges?.length" :data="cooc" :theme-color="detail.theme_color" />
-            <p v-else class="text-sm text-qianhui/70 py-8 text-center">暂无共现分析数据</p>
+            <div v-if="cooc.edges?.length" class="flex-1 min-h-0">
+              <CooccurrenceMiniGraph :data="cooc" :theme-color="detail.theme_color" class="h-full" />
+            </div>
+            <p v-else class="text-sm text-qianhui/70 py-8 text-center flex-1">暂无共现分析数据</p>
           </div>
           <p v-if="cooc.edges?.length" class="mt-3 text-[11px] text-qianhui/60 leading-5">
             线粗 = NPMI 强度 · 实线句内 / 虚线跨句 / 点线全诗 · 灰线桥接 · 点击节点进入对应意象

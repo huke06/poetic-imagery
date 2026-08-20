@@ -30,19 +30,22 @@
         </div>
       </div>
 
-      <!-- 主体：径向图谱 + 节点卡片 -->
-      <div ref="canvasRef" class="flex-1 relative overflow-hidden min-h-0"
-        @mousedown="onCanvasMouseDown"
-        @mousemove="onCanvasMouseMove"
-        @mouseup="onCanvasMouseUp"
-        @mouseleave="onCanvasMouseLeave">
-        <div class="cooc-scene">
-        <svg
-          v-if="projectedGraph"
-          ref="svgRef"
-          :viewBox="`0 0 ${W} ${H}`"
-          class="w-full h-full"
-          preserveAspectRatio="xMidYMid meet"
+      <!-- 主体：左侧图谱 + 右侧详情面板 -->
+      <div class="flex-1 flex min-h-0">
+
+        <!-- 左侧图谱区域 -->
+        <div ref="canvasRef" class="flex-1 relative overflow-hidden min-h-0"
+          @mousedown="onCanvasMouseDown"
+          @mousemove="onCanvasMouseMove"
+          @mouseup="onCanvasMouseUp"
+          @mouseleave="onCanvasMouseLeave">
+          <div class="cooc-scene">
+          <svg
+            v-if="projectedGraph"
+            ref="svgRef"
+            :viewBox="`0 0 ${W} ${H}`"
+            class="w-full h-full"
+            preserveAspectRatio="xMidYMid meet"
           @wheel.prevent="onZoom"
           @click.self="clearSelection">
           <defs>
@@ -155,34 +158,6 @@
         </svg>
         </div>
 
-        <!-- 悬浮/选中详情卡片 -->
-        <div v-for="n in activeCards" :key="'card_' + n.id"
-          class="absolute z-10 cooc-card-wrapper"
-          :style="{ left: n.screenX + 'px', top: n.screenY + 'px', width: n.cardW + 'px' }">
-          <div class="cooc-card" :style="{ ['--accent']: n.accentColor }">
-            <div class="flex items-start justify-between gap-2">
-              <b class="font-song text-sm" :style="{ color: n.accentColor }">{{ n.name }}</b>
-              <span v-if="n.edge?.npmi != null" class="text-[10px] text-qianhui whitespace-nowrap">NPMI {{ n.edge.npmi.toFixed(2) }}</span>
-            </div>
-            <div class="flex items-center gap-1.5 mt-0.5 text-[10px] text-qianhui/80 flex-wrap">
-              <span v-if="n.edge?.type">{{ typeLabel(n.edge.type) }}</span>
-              <span v-if="n.edge?.same_poem" class="text-qianhui/60">· 共现 {{ n.edge.same_poem }} 篇</span>
-              <span v-if="n.isBridge" class="text-zheshi">· 桥接词</span>
-              <span v-if="n.isSubCenter" class="text-zheshi">· 已展开</span>
-              <span v-if="n.isSubNode" class="text-zheshi">· 子意象</span>
-            </div>
-            <p v-if="n.edge?.poet || n.edge?.dynasty" class="text-[10px] text-qianhui/70 mt-1">
-              {{ [n.edge.dynasty, n.edge.poet].filter(Boolean).join(' · ') }}
-              <span v-if="n.edge.poem_title">《{{ n.edge.poem_title }}》</span>
-            </p>
-            <p v-if="n.edge?.verse" class="verse-text text-moyan/90 mt-1.5 leading-6 text-[12px] whitespace-pre-line">{{ n.edge.verse }}</p>
-            <p v-if="n.edge?.description" class="text-qianhui mt-1 text-[11px] leading-5">{{ n.edge.description }}</p>
-            <button v-if="n.conceptExists" class="mt-2 text-[11px] hover:underline pointer-events-auto font-semibold"
-              :style="{ color: n.accentColor }"
-              @click.stop="goConcept(n.concept_id)">探索该意象 →</button>
-          </div>
-        </div>
-
         <!-- 图例 -->
         <div v-if="graph" class="absolute left-5 bottom-5 bg-black/35 backdrop-blur rounded-lg px-4 py-3 text-xuanzhi/85 text-xs space-y-1.5 pointer-events-none">
           <div class="flex items-center gap-2"><svg width="34" height="6"><line x1="0" y1="3" x2="34" y2="3" stroke="#F5F1E8" stroke-width="4"/></svg> 粗 = NPMI 强</div>
@@ -212,6 +187,46 @@
         <div class="absolute left-5 top-2 bg-black/35 backdrop-blur rounded-lg px-3 py-1.5 text-xuanzhi/60 text-[10px] pointer-events-none">
           滚轮缩放 · 拖拽节点移动 · 拖拽空白平移
         </div>
+        </div>
+
+        <!-- 右侧详情面板 -->
+        <div class="w-72 shrink-0 border-l border-white/10 bg-black/25 backdrop-blur-sm flex flex-col">
+          <div v-if="activeCards.length === 0" class="flex-1 flex items-center justify-center text-xuanzhi/35 text-xs px-6 text-center">
+            悬停或点击节点<br>查看意象详情
+          </div>
+          <template v-else>
+            <div class="px-4 py-3 border-b border-white/10 text-xuanzhi/60 text-xs">
+              {{ activeCards.length > 1 ? '已选中节点' : '悬停节点' }}
+            </div>
+            <div v-for="n in activeCards" :key="'card_' + n.id"
+              class="flex-1 overflow-y-auto px-4 py-3"
+              :style="{ borderBottom: activeCards.indexOf(n) < activeCards.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none' }">
+              <div class="cooc-card" :style="{ ['--accent']: n.accentColor }">
+                <div class="flex items-start justify-between gap-2">
+                  <b class="font-song text-sm" :style="{ color: n.accentColor }">{{ n.name }}</b>
+                  <span v-if="n.edge?.npmi != null" class="text-[10px] text-qianhui whitespace-nowrap">NPMI {{ n.edge.npmi.toFixed(2) }}</span>
+                </div>
+                <div class="flex items-center gap-1.5 mt-0.5 text-[10px] text-qianhui/80 flex-wrap">
+                  <span v-if="n.edge?.type">{{ typeLabel(n.edge.type) }}</span>
+                  <span v-if="n.edge?.same_poem" class="text-qianhui/60">· 共现 {{ n.edge.same_poem }} 篇</span>
+                  <span v-if="n.isBridge" class="text-zheshi">· 桥接词</span>
+                  <span v-if="n.isSubCenter" class="text-zheshi">· 已展开</span>
+                  <span v-if="n.isSubNode" class="text-zheshi">· 子意象</span>
+                </div>
+                <p v-if="n.edge?.poet || n.edge?.dynasty" class="text-[10px] text-qianhui/70 mt-1">
+                  {{ [n.edge.dynasty, n.edge.poet].filter(Boolean).join(' · ') }}
+                  <span v-if="n.edge.poem_title">《{{ n.edge.poem_title }}》</span>
+                </p>
+                <p v-if="n.edge?.verse" class="verse-text text-moyan/90 mt-1.5 leading-6 text-[12px] whitespace-pre-line">{{ n.edge.verse }}</p>
+                <p v-if="n.edge?.description" class="text-qianhui mt-1 text-[11px] leading-5">{{ n.edge.description }}</p>
+                <button v-if="n.conceptExists" class="mt-2 text-[11px] hover:underline pointer-events-auto font-semibold"
+                  :style="{ color: n.accentColor }"
+                  @click.stop="goConcept(n.concept_id)">探索该意象 →</button>
+              </div>
+            </div>
+          </template>
+        </div>
+
       </div>
     </div>
     </Transition>
@@ -225,13 +240,11 @@
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
 .cooc-card {
-  width: 224px; border-radius: 10px; padding: 10px 12px;
+  width: 100%; border-radius: 10px; padding: 10px 12px;
   font-size: 12px; line-height: 1.6;
-  background: #F5F1E8; box-shadow: 0 0 0 2px var(--accent), 0 14px 36px rgba(0,0,0,0.4);
+  background: #F5F1E8; box-shadow: 0 0 0 2px var(--accent);
 }
-.cooc-card-wrapper { pointer-events: none; }
-.cooc-card { pointer-events: none; }
-.cooc-card button { pointer-events: auto; }
+.cooc-card { pointer-events: auto; }
 .cooc-edges line { opacity: 1; }
 .cooc-pulse { opacity: 0.14; }
 .node-group { cursor: grab; will-change: transform; }
@@ -316,8 +329,6 @@ const uid = Math.floor(Math.random() * 1e6)
 
 const svgRef = ref(null)
 const canvasRef = ref(null)
-const canvasSize = ref({ w: 0, h: 0 })
-let canvasResizeObserver = null
 
 // ── 词库中存在的概念ID集合（用于判断桥接词是否可探索）──
 const existingConceptIds = ref(new Set())
@@ -1093,37 +1104,19 @@ function clientToSvg(clientX, clientY) {
   const rect = canvas.getBoundingClientRect()
   const scaleX = rect.width / W
   const scaleY = rect.height / H
-  const aspectScale = Math.min(scaleX, scaleY)
-  const aspectOffsetX = (rect.width - W * aspectScale) / 2
-  const aspectOffsetY = (rect.height - H * aspectScale) / 2
-  // Step 1: client → viewBox (reverse preserveAspectRatio)
-  const viewBoxX = (clientX - rect.left - aspectOffsetX) / aspectScale
-  const viewBoxY = (clientY - rect.top - aspectOffsetY) / aspectScale
-  // Step 2: viewBox → node local coord (reverse <g transform="translate(panX,panY) scale(zoom)">)
-  // viewBox = local * zoom + panX  →  local = (viewBox - panX) / zoom
-  const localX = (viewBoxX - panX.value) / zoom.value
-  const localY = (viewBoxY - panY.value) / zoom.value
-  return { x: localX, y: localY }
+  const scale = Math.min(scaleX, scaleY)
+  const offsetX = (rect.width - W * scale) / 2
+  const offsetY = (rect.height - H * scale) / 2
+  const svgX = (clientX - rect.left - offsetX) / scale
+  const svgY = (clientY - rect.top - offsetY) / scale
+  return { x: svgX, y: svgY }
 }
 
-// ── 卡片位置计算 ──
+// ── 右侧面板卡片数据 ──
 const activeCards = computed(() => {
   if (!projectedGraph.value) return []
   const ids = new Set([selected.value, hovered.value].filter(Boolean))
   const result = []
-  const cardW = 224, cardH = 176
-
-  const { w: cw, h: ch } = canvasSize.value
-  if (!cw || !ch) return result
-
-  // 画布到 SVG viewBox 的缩放比（preserveAspectRatio: xMidYMid meet）
-  const aspectScale = Math.min(cw / W, ch / H)
-  const aspectOffsetX = (cw - W * aspectScale) / 2
-  const aspectOffsetY = (ch - H * aspectScale) / 2
-
-  // 节点在 SVG 组内的位置：先应用组变换（pan/zoom），再应用 aspectRatio 缩放
-  // SVG 组内坐标: (px * zoom + panX, py * zoom + panY)
-  // 画布像素: aspectOffset + svgCoord * aspectScale
 
   for (const n of projectedGraph.value.projectedNodes) {
     if (!ids.has(n.id) || n.isCenter) continue
@@ -1131,36 +1124,9 @@ const activeCards = computed(() => {
     const edge = edgeForNode(n)
     const accentColor = n.theme_color || themeColor
 
-    const useX = n.px !== undefined ? n.px : n.x
-    const useY = n.py !== undefined ? n.py : n.y
-
-    // 应用 SVG <g transform="translate(panX,panY) scale(zoom)"> 变换
-    const gx = useX * zoom.value + panX.value
-    const gy = useY * zoom.value + panY.value
-
-    // 应用 preserveAspectRatio 缩放，得到画布像素坐标
-    const screenX = aspectOffsetX + gx * aspectScale
-    const screenY = aspectOffsetY + gy * aspectScale
-
-    // 节点屏幕半径
-    const nodeR = (n.r || 20) * zoom.value * aspectScale
-    const visualR = n.isBridge ? nodeR + (8 * zoom.value * aspectScale) : nodeR + (4 * zoom.value * aspectScale)
-
-    // 卡片固定出现在节点右侧，与节点绑定
-    const margin = 12
-    let cardX = screenX + visualR + margin
-    let cardY = screenY - cardH / 2
-    // 右边界保护：不超出画布
-    if (cardX + cardW > cw - margin) cardX = cw - cardW - margin
-    cardX = Math.max(margin, cardX)
-    cardY = Math.max(margin, Math.min(ch - cardH - margin, cardY))
-
     result.push({
       ...n,
       edge,
-      screenX: cardX,
-      screenY: cardY,
-      cardW,
       accentColor,
       conceptExists: n.concept_id ? existingConceptIds.value.has(n.concept_id) : false,
     })
@@ -1227,12 +1193,9 @@ function close() { emit('close') }
 function onZoom(e) {
   const delta = e.deltaY > 0 ? 0.9 : 1.1
   const newZoom = Math.max(0.3, Math.min(5, zoom.value * delta))
-  const ml = clientToSvg(e.clientX, e.clientY)
-  // Zoom keeps mouse point stationary: viewBoxX before = viewBoxX after
-  // local * zoom + panX = local * newZoom + newPanX
-  // → newPanX = panX + local * (zoom - newZoom)
-  panX.value = panX.value + ml.x * (zoom.value - newZoom)
-  panY.value = panY.value + ml.y * (zoom.value - newZoom)
+  const mouseSvg = clientToSvg(e.clientX, e.clientY)
+  panX.value = mouseSvg.x - (mouseSvg.x - panX.value) * (newZoom / zoom.value)
+  panY.value = mouseSvg.y - (mouseSvg.y - panY.value) * (newZoom / zoom.value)
   zoom.value = newZoom
 }
 
@@ -1372,35 +1335,14 @@ function resetState() {
 }
 
 function onKey(e) { if (e.key === 'Escape' && props.show) close() }
-onMounted(() => {
-  document.addEventListener('keydown', onKey)
-  nextTick(() => {
-    const canvas = canvasRef.value
-    if (!canvas) return
-    const updateSize = () => {
-      canvasSize.value = { w: canvas.clientWidth, h: canvas.clientHeight }
-    }
-    updateSize()
-    canvasResizeObserver = new ResizeObserver(updateSize)
-    canvasResizeObserver.observe(canvas)
-  })
-})
+onMounted(() => document.addEventListener('keydown', onKey))
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onKey)
-  if (canvasResizeObserver) {
-    canvasResizeObserver.disconnect()
-    canvasResizeObserver = null
-  }
 })
 
 watch(() => props.show, (v) => {
   if (!v) {
     resetState()
-  } else {
-    nextTick(() => {
-      const canvas = canvasRef.value
-      if (canvas) canvasSize.value = { w: canvas.clientWidth, h: canvas.clientHeight }
-    })
   }
 })
 </script>
