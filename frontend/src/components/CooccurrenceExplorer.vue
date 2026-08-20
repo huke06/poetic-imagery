@@ -36,8 +36,7 @@
         @mousemove="onCanvasMouseMove"
         @mouseup="onCanvasMouseUp"
         @mouseleave="onCanvasMouseLeave">
-        <div class="cooc-scene"
-        :class="{ 'scene-expanded': expanded }">
+        <div class="cooc-scene">
         <svg
           v-if="projectedGraph"
           ref="svgRef"
@@ -52,70 +51,44 @@
               <stop offset="60%" :stop-color="themeColor" stop-opacity="0.06" />
               <stop offset="100%" :stop-color="themeColor" stop-opacity="0" />
             </radialGradient>
-            <filter :id="'coocBlur' + uid" x="-40%" y="-40%" width="180%" height="180%">
-              <feGaussianBlur stdDeviation="4" result="b" />
-            </filter>
-            <filter :id="'coocDepthBlur' + uid" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur :stdDeviation="3" />
-            </filter>
           </defs>
 
           <!-- 可缩放/平移的变换组 -->
           <g :transform="`translate(${panX},${panY}) scale(${zoom})`">
 
-            <!-- 背景光晕 + 同心圆 -->
+            <!-- 背景光晕 -->
             <circle :cx="W/2" :cy="H/2" :r="Math.min(W,H)/2" :fill="`url(#coocGlow${uid})`" pointer-events="none" />
-            <g class="cooc-rings" stroke="#F5F1E8" fill="none" pointer-events="none">
-              <circle :cx="W/2" :cy="H/2" r="150" stroke-opacity="0.05" />
-              <circle :cx="W/2" :cy="H/2" r="250" stroke-opacity="0.07" />
-            </g>
-            <!-- 3D旋转控制环 -->
-            <circle v-if="expanded" :cx="W/2" :cy="H/2" r="340" fill="none"
-              :stroke="mouseInsideRing ? themeColor : '#F5F1E8'"
-              :stroke-opacity="mouseInsideRing ? 0.55 : 0.25"
-              stroke-width="2" stroke-dasharray="6 4"
-              style="transition: stroke-opacity 0.3s, stroke 0.3s"
-              class="cooc-control-ring" />
-
-            <!-- 连线（使用投影坐标） -->
+            <!-- 连线 -->
             <g class="cooc-edges" pointer-events="none">
               <g v-for="(e, eIdx) in projectedGraph.projectedEdges" :key="'e' + e.source + '_' + e.target + (e.isSubEdge ? '_sub' : '')"
                 :class="[e.isSubEdge ? 'edge-draw-enter' : '', { 'edge-collapsing-sub': collapsing && e.isSubEdge }]"
                 :style="e.isSubEdge && !collapsing
                   ? 'animation-delay:' + Math.min(0.6, eIdx * 0.03) + 's'
                   : ''">
-                <line v-if="e.isContain"
-                  :x1="e.x1" :y1="e.y1" :x2="e.x2" :y2="e.y2"
-                  stroke="#9aa0aa" stroke-width="1" stroke-opacity="0.45" stroke-dasharray="3 5" />
-                <line v-else
-                  :x1="e.x1" :y1="e.y1" :x2="e.x2" :y2="e.y2"
-                  :stroke="e.isSubEdge ? (e.strokeColor || themeColor) : themeColor"
-                  :stroke-width="e.width" :stroke-opacity="e.opacity"
-                  :stroke-dasharray="e.dash" stroke-linecap="round" />
+                <path :d="e.pathD"
+                  fill="none"
+                  :stroke="e.isContain ? '#9aa0aa' : (e.isSubEdge ? (e.strokeColor || themeColor) : themeColor)"
+                  :stroke-width="e.isContain ? 1 : e.width"
+                  :stroke-opacity="e.isContain ? 0.45 : e.opacity"
+                  :stroke-dasharray="e.isContain ? '3 5' : e.dash" stroke-linecap="round" />
               </g>
             </g>
 
             <!-- 中心根节点（投影坐标） -->
             <g :transform="`translate(${projectedGraph.projectedCenter.px},${projectedGraph.projectedCenter.py})`"
-              :style="{ opacity: expanded ? (isRotating ? 0.92 : depthOpacity(projectedGraph.projectedCenter.pdepth)) : 1 }"
               class="cursor-pointer">
-              <circle :r="74 * (expanded ? projectedGraph.projectedCenter.pscale : 1)" :fill="themeColor" opacity="0.12" class="cooc-pulse" />
-              <circle :r="58 * (expanded ? projectedGraph.projectedCenter.pscale : 1)" :fill="themeColor" stroke="#F5F1E8" stroke-width="3"
-                :filter="expanded ? `url(#coocBlur${uid})` : undefined" opacity="0.85" />
-              <circle :r="58 * (expanded ? projectedGraph.projectedCenter.pscale : 1)" :fill="themeColor" stroke="#F5F1E8" stroke-width="3" />
-              <circle :r="68 * (expanded ? projectedGraph.projectedCenter.pscale : 1)" fill="none" :stroke="themeColor" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="3 4" class="cooc-spin" />
+              <circle :r="58" :fill="themeColor" stroke="#F5F1E8" stroke-width="3" />
               <text text-anchor="middle" dominant-baseline="middle" fill="#F5F1E8"
-                :font-size="displayGraph.center.font * (expanded ? projectedGraph.projectedCenter.pscale : 1)"
+                :font-size="displayGraph.center.font"
                 style="font-family:'Kaiti SC',KaiTi,serif;font-weight:700" pointer-events="none">{{ displayGraph.center.name }}</text>
             </g>
 
-            <!-- 所有节点（投影后，按深度排序） -->
+            <!-- 所有节点 -->
             <g v-for="(n, nIdx) in projectedGraph.projectedNodes" :key="n.id"
               :transform="`translate(${n.px},${n.py})`"
-              :class="['cursor-pointer', 'node-group', { 'node-no-transition': draggingNodeId === n.id || isRotating }]"
+              :class="['cursor-pointer', 'node-group', { 'node-no-transition': draggingNodeId === n.id }]"
               :style="{
-                transition: isRotating ? 'none' : 'transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease',
-                opacity: expanded ? (isRotating ? 0.92 : n.popacity) : undefined,
+                transition: 'transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease',
               }"
               @mousedown.stop="onNodeMouseDown($event, n)"
               @click="select(n)"
@@ -134,48 +107,45 @@
 
               <!-- 子图谱中心节点 -->
               <template v-if="n.isSubCenter">
-                <circle :r="(n.r + 10) * (expanded ? n.pscale : 1)" :fill="n.theme_color || '#8A6D3B'"
-                  :opacity="expanded && !isRotating && n.pdepth < -150 ? 0.1 : 0.15"
-                  :filter="expanded && !isRotating && n.pdepth < -150 ? `url(#coocDepthBlur${uid})` : undefined" />
-                <circle :r="(n.r + 8) * (expanded ? n.pscale : 1)" :fill="n.theme_color || '#8A6D3B'" opacity="0.25" class="cooc-pulse" />
-                <circle :r="n.r * (expanded ? n.pscale : 1)" :fill="n.theme_color || '#8A6D3B'"
-                  stroke="#F5F1E8" :stroke-width="2.5 * (expanded ? n.pscale : 1)" stroke-dasharray="4 3"
+                <circle :r="n.r + 10" :fill="n.theme_color || '#8A6D3B'" opacity="0.15" />
+                <circle :r="n.r + 8" :fill="n.theme_color || '#8A6D3B'" opacity="0.25" class="cooc-pulse" />
+                <circle :r="n.r" :fill="n.theme_color || '#8A6D3B'"
+                  stroke="#F5F1E8" :stroke-width="2.5" stroke-dasharray="4 3"
                   :opacity="dim(n) ? 0.45 : 1" style="transition: opacity .2s" />
                 <text text-anchor="middle" dominant-baseline="middle" fill="#F5F1E8"
-                  :font-size="n.font * (expanded ? n.pscale : 1)"
+                  :font-size="n.font"
                   style="font-family:'Kaiti SC',KaiTi,serif" pointer-events="none">{{ n.name }}</text>
               </template>
 
               <!-- 桥接词节点 -->
               <template v-else-if="n.isBridge">
-                <circle :r="14 * (expanded ? n.pscale : 1)" fill="#3a4050" stroke="#9aa0aa" :stroke-width="1.5 * (expanded ? n.pscale : 1)" stroke-dasharray="3 3" />
-                <text text-anchor="middle" :y="26 * (expanded ? n.pscale : 1)" fill="#c3c8d2" :font-size="11 * (expanded ? n.pscale : 1)"
-                  style="font-family:'Kaiti SC',KaiTi,serif">{{ n.name }}</text>
+                <circle :r="18" fill="#3a4050" stroke="#c9a96e" stroke-width="1.5" stroke-dasharray="4 3" />
+                <text text-anchor="middle" dominant-baseline="middle" fill="#e8d5a3" :font-size="12"
+                  style="font-family:'Kaiti SC',KaiTi,serif;font-weight:600"
+                  :opacity="dim(n) ? 0.45 : 1">{{ n.name }}</text>
               </template>
 
               <!-- 普通共现节点 -->
               <template v-else-if="!n.isSubNode">
-                <circle :r="(n.r + 6) * (expanded ? n.pscale : 1)" :fill="n.theme_color || '#8A6D3B'" opacity="0.18" class="cooc-pulse" />
-                <circle :r="n.r * (expanded ? n.pscale : 1)" :fill="n.theme_color || '#8A6D3B'"
+                <circle :r="n.r + 6" :fill="n.theme_color || '#8A6D3B'" opacity="0.18" class="cooc-pulse" />
+                <circle :r="n.r" :fill="n.theme_color || '#8A6D3B'"
                   :stroke="selected === n.id || hovered === n.id ? '#F5F1E8' : 'rgba(245,241,232,0.55)'"
-                  :stroke-width="(selected === n.id ? 3 : 1.6) * (expanded ? n.pscale : 1)"
+                  :stroke-width="selected === n.id ? 3 : 1.6"
                   :opacity="dim(n) ? 0.45 : 1" style="transition: opacity .2s" />
                 <text text-anchor="middle" dominant-baseline="middle" fill="#F5F1E8"
-                  :font-size="n.font * (expanded ? n.pscale : 1)"
+                  :font-size="n.font"
                   style="font-family:'Kaiti SC',KaiTi,serif" pointer-events="none">{{ n.name }}</text>
               </template>
 
               <!-- 子图谱子节点 -->
               <template v-else>
-                <circle :r="(n.r + 4) * (expanded ? n.pscale : 1)" :fill="n.theme_color || '#8A6D3B'"
-                  :opacity="expanded && !isRotating && n.pdepth < -150 ? 0.1 : 0.2"
-                  :filter="expanded && !isRotating && n.pdepth < -150 ? `url(#coocDepthBlur${uid})` : undefined" />
-                <circle :r="n.r * (expanded ? n.pscale : 1)" :fill="n.theme_color || '#8A6D3B'"
+                <circle :r="n.r + 4" :fill="n.theme_color || '#8A6D3B'" opacity="0.2" />
+                <circle :r="n.r" :fill="n.theme_color || '#8A6D3B'"
                   :stroke="selected === n.id || hovered === n.id ? '#F5F1E8' : 'rgba(245,241,232,0.55)'"
-                  :stroke-width="(selected === n.id ? 2.5 : 1.2) * (expanded ? n.pscale : 1)"
+                  :stroke-width="selected === n.id ? 2.5 : 1.2"
                   :opacity="dim(n) ? 0.45 : 1" style="transition: opacity .2s" />
                 <text text-anchor="middle" dominant-baseline="middle" fill="#F5F1E8"
-                  :font-size="n.font * (expanded ? n.pscale : 1)"
+                  :font-size="n.font"
                   style="font-family:'Kaiti SC',KaiTi,serif" pointer-events="none">{{ n.name }}</text>
               </template>
               </g>
@@ -251,11 +221,6 @@
 <style scoped>
 .cooc-root { background: radial-gradient(120% 90% at 50% 0%, #16263f 0%, #0e1726 58%, #0a101c 100%); }
 .cooc-scene { }
-.cooc-scene.scene-expanded { animation: sceneBreath 8s ease-in-out infinite; }
-@keyframes sceneBreath {
-  0%, 100% { filter: brightness(1); }
-  50% { filter: brightness(1.08); }
-}
 .fade-enter-active, .fade-leave-active { transition: opacity 0.35s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
@@ -267,7 +232,6 @@
 .cooc-card-wrapper { pointer-events: auto; }
 .cooc-edges line { opacity: 1; }
 .cooc-pulse { opacity: 0.14; }
-.cooc-spin { }
 .node-group { cursor: grab; will-change: transform; }
 .node-group:active { cursor: grabbing; }
 .node-group > g { transform-box: fill-box; transform-origin: center; }
@@ -320,16 +284,6 @@
 .edge-collapsing-sub {
   animation: edgeFadeOut 0.38s ease-in forwards !important;
 }
-
-.cooc-control-ring {
-  animation: controlRingPulse 4s ease-in-out infinite;
-  transform-box: fill-box;
-}
-
-@keyframes controlRingPulse {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
-}
 </style>
 
 <script setup>
@@ -380,7 +334,7 @@ function nodeRadius(name, samePoem) {
 function nodeFont(name) { return name.length > 2 ? 14 : name.length === 2 ? 17 : 20 }
 function centerFont(name) { return name.length > 3 ? 26 : name.length === 3 ? 30 : 36 }
 
-// ── 基础图谱（一级）──
+// ── 基础图谱（一级）── 放射状布局 + 弧线连接
 const graph = computed(() => {
   const d = props.data
   if (!d || !d.edges?.length) return null
@@ -388,8 +342,6 @@ const graph = computed(() => {
   const center = nodes.find((n) => n.center)
   const centerId = center?.id
   if (!centerId) return null
-  const cx = W / 2, cy = H / 2
-  const pos = { [centerId]: { x: cx, y: cy } }
 
   const containEdges = []
   const directEdges = []
@@ -403,24 +355,79 @@ const graph = computed(() => {
     }
   }
 
-  const angleFor = (i, n, off = 0) => (n <= 1 ? 0 : (i / n) * Math.PI * 2) - Math.PI / 2 + off
-
   const bridgeIds = containEdges.map((e) => e.target)
-  bridgeIds.forEach((bid, i) => {
-    if (pos[bid]) return
-    const a = angleFor(i, bridgeIds.length)
-    pos[bid] = { x: cx + 148 * Math.cos(a), y: cy + 148 * Math.sin(a) }
-  })
-  directEdges.forEach((e, i) => {
-    if (pos[e.target]) return
-    const a = angleFor(i, directEdges.length)
-    pos[e.target] = { x: cx + 252 * Math.cos(a), y: cy + 252 * Math.sin(a) }
-  })
-  const bt = bridgeEdges.map((e) => e.target)
-  bt.forEach((t, i) => {
-    if (pos[t]) return
-    const a = angleFor(i, bt.length, 0.35)
-    pos[t] = { x: cx + 286 * Math.cos(a), y: cy + 286 * Math.sin(a) }
+  const bridgeIdSet = new Set(bridgeIds)
+
+  // Group bridge edges by their source bridge word
+  const bridgeChildrenMap = {}
+  for (const bid of bridgeIds) bridgeChildrenMap[bid] = []
+  for (const e of bridgeEdges) {
+    if (bridgeIdSet.has(e.source)) {
+      bridgeChildrenMap[e.source].push(e.target)
+    }
+  }
+
+  // Direct co-occurrence words (not via bridge)
+  const directTargets = directEdges.map((e) => e.target)
+
+  const cx = W / 2, cy = H / 2
+
+  // Distribute bridge words + direct targets evenly around center
+  const allGroups = []
+  for (const bid of bridgeIds) allGroups.push({ id: bid, type: 'bridge', children: bridgeChildrenMap[bid] || [] })
+  if (directTargets.length > 0) allGroups.push({ id: '__direct__', type: 'direct', children: directTargets })
+
+  const BRIDGE_R = 200       // bridge word orbit radius
+  const LEAF_R = 380         // leaf node orbit radius (outer)
+
+  const pos = { [centerId]: { x: cx, y: cy } }
+
+  const totalGroups = allGroups.length
+  allGroups.forEach((g, gi) => {
+    // Angle for this group (start from top, clockwise)
+    const angle = (gi / totalGroups) * Math.PI * 2 - Math.PI / 2
+    const cosA = Math.cos(angle)
+    const sinA = Math.sin(angle)
+
+    if (g.type === 'bridge') {
+      // Bridge word position
+      const bx = cx + BRIDGE_R * cosA
+      const by = cy + BRIDGE_R * sinA
+      pos[g.id] = { x: bx, y: by }
+
+      // Place children along an arc around the bridge word, pushed outward
+      const children = g.children
+      if (children.length > 0) {
+        const spreadAngle = Math.min(Math.PI * 1.2, children.length * 0.32)
+        const startAngle = angle - spreadAngle / 2
+        const angleStep = children.length > 1 ? spreadAngle / (children.length - 1) : 0
+        const childRadius = LEAF_R
+
+        children.forEach((cid, ci) => {
+          const ca = children.length === 1 ? angle : startAngle + ci * angleStep
+          pos[cid] = {
+            x: cx + childRadius * Math.cos(ca),
+            y: cy + childRadius * Math.sin(ca),
+          }
+        })
+      }
+    } else {
+      // Direct targets - distribute in a fan
+      const children = g.children
+      if (children.length > 0) {
+        const spreadAngle = Math.min(Math.PI * 1.2, children.length * 0.32)
+        const startAngle = angle - spreadAngle / 2
+        const angleStep = children.length > 1 ? spreadAngle / (children.length - 1) : 0
+
+        children.forEach((tid, ci) => {
+          const ca = children.length === 1 ? angle : startAngle + ci * angleStep
+          pos[tid] = {
+            x: cx + LEAF_R * Math.cos(ca),
+            y: cy + LEAF_R * Math.sin(ca),
+          }
+        })
+      }
+    }
   })
 
   const nodeMap = {}
@@ -430,14 +437,17 @@ const graph = computed(() => {
   for (const [id, p] of Object.entries(pos)) {
     const meta = nodeMap[id]
     if (!meta) continue
+    if (id === '__direct__') continue
     const isCenter = id === centerId
     const isBridge = bridgeIds.includes(id)
+    const isDirect = directTargets.includes(id)
     placed.push({
       id, name: meta.name, x: p.x, y: p.y,
       concept_id: meta.concept_id, theme_color: meta.theme_color,
-      isCenter, isBridge,
-      r: isCenter ? 58 : isBridge ? 14 : nodeRadius(meta.name, 0),
+      isCenter, isBridge, isDirect,
+      r: isCenter ? 58 : isBridge ? 18 : nodeRadius(meta.name, 0),
       font: isCenter ? centerFont(meta.name) : nodeFont(meta.name),
+      _initX: p.x, _initY: p.y,
     })
   }
   const centerNode = placed.find((p) => p.isCenter)
@@ -449,9 +459,10 @@ const graph = computed(() => {
     }
   }
   const placedNodes = placed.map((p) => p.isCenter ? p : ({
-    ...p, r: p.isBridge ? 14 : nodeRadius(p.name, samePoemByTarget[p.id] || 0),
+    ...p, r: p.isBridge ? 18 : nodeRadius(p.name, samePoemByTarget[p.id] || 0),
   }))
 
+  // Build edges: root→bridge = curve, bridge→leaf = straight, root→direct = straight
   const geoEdges = []
   for (const e of d.edges) {
     const s = pos[e.source], t = pos[e.target]
@@ -462,11 +473,27 @@ const graph = computed(() => {
     const ux = dx / len, uy = dy / len
     const startR = (placed.find((p) => p.id === e.source)?.r || 0) + 4
     const endR = (placed.find((p) => p.id === e.target)?.r || 0) + 3
+
+    const sx = s.x + ux * startR, sy = s.y + uy * startR
+    const tx = t.x - ux * endR, ty = t.y - uy * endR
+
+    // Only root→bridge (contain edges from center) uses curve
+    const isCurveEdge = e.source === centerId && isContain
+    let pathD = null
+    if (isCurveEdge) {
+      const nx = -uy, ny = ux
+      const curveAmt = Math.min(60, len * 0.25)
+      const mx = (sx + tx) / 2 + nx * curveAmt
+      const my = (sy + ty) / 2 + ny * curveAmt
+      pathD = `M${sx},${sy} Q${mx},${my} ${tx},${ty}`
+    } else {
+      pathD = `M${sx},${sy} L${tx},${ty}`
+    }
+
     geoEdges.push({
       ...e,
-      x1: s.x + ux * startR, y1: s.y + uy * startR,
-      x2: t.x - ux * endR, y2: t.y - uy * endR,
-      isContain, isBridgeEdge: e.source !== centerId,
+      x1: sx, y1: sy, x2: tx, y2: ty,
+      isContain, isCurveEdge, pathD,
       width: 1 + ((e.npmi + 1) / 2) * 5,
       opacity: e.diaphaneity || 0.5,
       dash: dashOf(e.type),
@@ -495,14 +522,12 @@ function applyRepulsion(nodes, opts = {}) {
     minDist = 30,
     centerX = W / 2,
     centerY = H / 2,
-    centerGravity = 0.02,
     damping = 0.85,
     boundPadding = 40,
   } = opts
 
-  // 固定节点：isCenter、isSubCenter、isBridge 不动
   const fixedIds = new Set(
-    nodes.filter((n) => n.isCenter || n.isSubCenter || n.isBridge)
+    nodes.filter((n) => n.isCenter || n.isSubCenter)
       .map((n) => n.id)
   )
   const parentMap = {}
@@ -517,23 +542,60 @@ function applyRepulsion(nodes, opts = {}) {
     vel[n.id] = { x: 0, y: 0 }
   }
 
+  // Pre-compute node radii with extra padding for spacing
+  const radii = {}
+  for (const n of nodes) {
+    radii[n.id] = (n.r || 12) + minDist / 2
+  }
+
+  // Radial target distances by node type
+  const radialTarget = {}
+  for (const n of nodes) {
+    if (n.isCenter) continue
+    if (n.isBridge) {
+      const initPos = n._initX !== undefined ? { x: n._initX, y: n._initY } : { x: n.x, y: n.y }
+      const dx = initPos.x - centerX, dy = initPos.y - centerY
+      radialTarget[n.id] = {
+        initX: initPos.x, initY: initPos.y,
+        angle: Math.atan2(dy, dx),
+        radius: Math.hypot(dx, dy),
+      }
+    } else {
+      const dx = n._initX !== undefined ? n._initX - centerX : n.x - centerX
+      const dy = n._initY !== undefined ? n._initY - centerY : n.y - centerY
+      radialTarget[n.id] = {
+        angle: Math.atan2(dy, dx),
+        radius: Math.max(200, Math.hypot(dx, dy)),
+      }
+    }
+  }
+
   for (let iter = 0; iter < iterations; iter++) {
     const forces = {}
     for (const n of nodes) forces[n.id] = { x: 0, y: 0 }
 
-    // 斥力：所有节点对之间
+    // ── Phase 1: Global repulsion between ALL pairs ──
+    const progress = iter / iterations
+    const forceStrength = progress < 0.3 ? 3.0 : progress < 0.6 ? 2.0 : 1.2
     for (let i = 0; i < nodes.length; i++) {
       const a = nodes[i]
+      const ra = radii[a.id]
       for (let j = i + 1; j < nodes.length; j++) {
         const b = nodes[j]
         const dx = pos[a.id].x - pos[b.id].x
         const dy = pos[a.id].y - pos[b.id].y
         const dist = Math.hypot(dx, dy) || 0.01
-        const rA = a.r || 10
-        const rB = b.r || 10
-        const desired = rA + rB + minDist
-        if (dist < desired) {
-          const strength = (desired - dist) / dist * 0.5
+        const desired = ra + radii[b.id]
+        if (dist < desired * 2.5) {
+          const overlap = desired - dist
+          let strength
+          if (overlap > 0) {
+            // Hard repulsion for overlap: proportional to overlap²
+            strength = (overlap * overlap / dist) * 3.0
+          } else {
+            // Soft repulsion at distance: 1/r decay
+            strength = (desired / (dist * dist)) * 1.5
+          }
           const fx = dx * strength
           const fy = dy * strength
           forces[a.id].x += fx
@@ -544,137 +606,129 @@ function applyRepulsion(nodes, opts = {}) {
       }
     }
 
-    // 吸引力：子节点向父节点聚拢
+    // ── Phase 2: Radial spread force for leaf nodes ──
+    // Push leaf nodes outward from center along their radial direction
     for (const n of nodes) {
-      if (!n.parentId || fixedIds.has(n.id)) continue
-      const pp = pos[parentMap[n.id]]
-      if (!pp) continue
-      const dx = pp.x - pos[n.id].x
-      const dy = pp.y - pos[n.id].y
+      if (fixedIds.has(n.id) || n.isBridge) continue
+      const rt = radialTarget[n.id]
+      if (!rt) continue
+      const dx = pos[n.id].x - centerX
+      const dy = pos[n.id].y - centerY
       const dist = Math.hypot(dx, dy) || 0.01
-      const desired = 70
-      if (dist > desired) {
-        const strength = (dist - desired) / dist * centerGravity
-        forces[n.id].x += dx * strength
-        forces[n.id].y += dy * strength
-      }
+      const outwardStrength = 0.04 * (1 - progress * 0.5)
+      forces[n.id].x += (dx / dist) * outwardStrength * Math.max(0, rt.radius - dist)
+      forces[n.id].y += (dy / dist) * outwardStrength * Math.max(0, rt.radius - dist)
     }
 
-    // 根节点对可变节点的轻微吸引，防止飘太远
+    // ── Phase 3: Bridge word anchoring + leaf radial gravity ──
     for (const n of nodes) {
       if (fixedIds.has(n.id)) continue
-      const dx = centerX - pos[n.id].x
-      const dy = centerY - pos[n.id].y
-      const dist = Math.hypot(dx, dy) || 0.01
-      if (dist > 400) {
-        const strength = (dist - 400) / dist * 0.01
-        forces[n.id].x += dx * strength
-        forces[n.id].y += dy * strength
+      if (n.isBridge) {
+        // Bridge word: spring back to initial position (strong)
+        const rt = radialTarget[n.id]
+        const idx = rt.initX - pos[n.id].x
+        const idy = rt.initY - pos[n.id].y
+        forces[n.id].x += idx * 0.15
+        forces[n.id].y += idy * 0.15
+      } else {
+        // Leaf node: gentle pull to maintain target radius
+        const rt = radialTarget[n.id]
+        const dx = pos[n.id].x - centerX
+        const dy = pos[n.id].y - centerY
+        const dist = Math.hypot(dx, dy) || 0.01
+        const target = rt.radius || 350
+        if (dist < target - 30) {
+          // Too close to center - push outward
+          forces[n.id].x -= (dx / dist) * (target - dist) * 0.06
+          forces[n.id].y -= (dy / dist) * (target - dist) * 0.06
+        } else if (dist > target + 120) {
+          // Too far - gentle pull back
+          forces[n.id].x += (dx / dist) * (dist - target) * 0.015
+          forces[n.id].y += (dy / dist) * (dist - target) * 0.015
+        }
       }
     }
 
-    // 应用力
-    const tempDamping = damping * (1 - iter / iterations)
+    // ── Phase 4: Apply forces with damping ──
+    const tempDamping = damping * (1 - iter / iterations * 0.3)
     for (const n of nodes) {
       if (fixedIds.has(n.id)) continue
       vel[n.id].x = (vel[n.id].x + forces[n.id].x) * tempDamping
       vel[n.id].y = (vel[n.id].y + forces[n.id].y) * tempDamping
+      // Clamp velocity to prevent explosions
+      const maxV = 60
+      const vmag = Math.hypot(vel[n.id].x, vel[n.id].y)
+      if (vmag > maxV) {
+        vel[n.id].x = vel[n.id].x / vmag * maxV
+        vel[n.id].y = vel[n.id].y / vmag * maxV
+      }
       pos[n.id].x += vel[n.id].x
       pos[n.id].y += vel[n.id].y
-      // 边界约束
       pos[n.id].x = Math.max(boundPadding, Math.min(W - boundPadding, pos[n.id].x))
       pos[n.id].y = Math.max(boundPadding, Math.min(H - boundPadding, pos[n.id].y))
     }
   }
 
-  return nodes.map((n) => ({ ...n, x: pos[n.id].x, y: pos[n.id].y }))
-}
-
-// ── 3D 投影系统 ──
-const FOCAL = 900          // 透视焦距
-const camAngleX = ref(18)  // 摄像机俯仰角（度）
-const camAngleY = ref(0)   // 摄像机水平旋转角（度）
-const isRotating = ref(false)
-let autoRotateRAF = null
-
-// 鼠标位置驱动的旋转控制
-const mouseNormX = ref(0)   // -1 ~ 1, 鼠标在控制圈内的归一化X
-const mouseNormY = ref(0)   // -1 ~ 1, 鼠标在控制圈内的归一化Y
-const mouseInsideRing = ref(false)
-
-const CONTROL_RADIUS = 340
-
-function startAutoRotate() {
-  if (autoRotateRAF) return
-  isRotating.value = true
-  let last = performance.now()
-  const tick = (now) => {
-    const dt = (now - last) / 1000
-    last = now
-    if (!draggingNode && !panStart && expanded.value) {
-      const speedBias = mouseInsideRing.value ? mouseNormX.value * 12 : 0
-      camAngleY.value += dt * (8 + speedBias)
-      if (mouseInsideRing.value) {
-        const targetPitch = mouseNormY.value * 50
-        camAngleX.value += (targetPitch - camAngleX.value) * 0.06
-      }
-      if (cachedNodes) {
-        doProject()
+  // ── Post-pass: Hard collision resolution ──
+  // Iterative hard separation: push apart overlapping nodes
+  for (let pass = 0; pass < 5; pass++) {
+    let anyOverlap = false
+    for (let i = 0; i < nodes.length; i++) {
+      const a = nodes[i]
+      const ra = radii[a.id]
+      if (fixedIds.has(a.id)) continue
+      for (let j = 0; j < nodes.length; j++) {
+        if (i === j) continue
+        const b = nodes[j]
+        const dx = pos[a.id].x - pos[b.id].x
+        const dy = pos[a.id].y - pos[b.id].y
+        const dist = Math.hypot(dx, dy) || 0.01
+        const minDist = ra + radii[b.id]
+        if (dist < minDist) {
+          anyOverlap = true
+          const overlap = (minDist - dist) / 2
+          const ux = dx / dist
+          const uy = dy / dist
+          if (!fixedIds.has(b.id)) {
+            pos[a.id].x += ux * overlap
+            pos[a.id].y += uy * overlap
+            pos[b.id].x -= ux * overlap
+            pos[b.id].y -= uy * overlap
+          } else {
+            pos[a.id].x += ux * overlap * 2
+            pos[a.id].y += uy * overlap * 2
+          }
+        }
       }
     }
-    autoRotateRAF = requestAnimationFrame(tick)
+    if (!anyOverlap) break
   }
-  autoRotateRAF = requestAnimationFrame(tick)
-}
-function stopAutoRotate() {
-  if (autoRotateRAF) { cancelAnimationFrame(autoRotateRAF); autoRotateRAF = null }
-  isRotating.value = false
-}
 
-function deg2rad(d) { return d * Math.PI / 180 }
+  // Final boundary clamping
+  for (const n of nodes) {
+    pos[n.id].x = Math.max(boundPadding, Math.min(W - boundPadding, pos[n.id].x))
+    pos[n.id].y = Math.max(boundPadding, Math.min(H - boundPadding, pos[n.id].y))
+  }
 
-// 3D → 2D 投影：旋转后透视投影
-// 返回 { x, y, scale, depthZ }
-function project3D(x, y, z, cx, cy) {
-  // 以画布中心为原点的相对坐标
-  let rx = x - cx
-  let ry = y - cy
-  let rz = z
-
-  // rotateY（水平旋转）
-  const ay = deg2rad(camAngleY.value)
-  const cosY = Math.cos(ay), sinY = Math.sin(ay)
-  let nx = rx * cosY + rz * sinY
-  let nz = -rx * sinY + rz * cosY
-  rx = nx; rz = nz
-
-  // rotateX（俯仰旋转）
-  const ax = deg2rad(camAngleX.value)
-  const cosX = Math.cos(ax), sinX = Math.sin(ax)
-  let ny_ = ry * cosX - rz * sinX
-  nz = ry * sinX + rz * cosX
-  ry = ny_; rz = nz
-
-  // 透视投影
-  const denom = FOCAL - rz
-  const scale = denom > 1 ? FOCAL / denom : FOCAL
-  const px = cx + rx * scale
-  const py = cy + ry * scale
-
-  return { x: px, y: py, scale, depthZ: rz }
-}
-
-function depthOpacity(depthZ) {
-  const t = Math.max(0, Math.min(1, (-depthZ) / 200))
-  return 1 - t * 0.4
+  return nodes.map((n) => ({ ...n, x: pos[n.id].x, y: pos[n.id].y }))
 }
 
 // ── 展开后合并的显示图谱 ──
 const displayGraph = computed(() => {
   if (!graph.value) return null
   if (!expanded.value || Object.keys(expansionData.value).length === 0) {
-    const nodes = graph.value.nodes.map((n) => ({ ...n, z: 0 }))
-    return { center: { ...graph.value.center, z: 0 }, nodes, edges: graph.value.edges }
+    // 基础图谱：也应用斥力，防止节点重叠
+    const baseNodes = graph.value.nodes.map((n) => ({ ...n, z: 0 }))
+    const repulsedNodes = applyRepulsion(baseNodes, {
+      iterations: 30,
+      minDist: 40,
+      damping: 0.82,
+    })
+    // 用斥力后的节点位置重建边
+    const edgeNodesMap = {}
+    for (const n of repulsedNodes) edgeNodesMap[n.id] = n
+    const repulsedEdges = graph.value.edges.map((e) => ({ ...e }))
+    return { center: { ...graph.value.center, z: 0 }, nodes: repulsedNodes, edges: repulsedEdges }
   }
 
   const base = graph.value
@@ -693,13 +747,13 @@ const displayGraph = computed(() => {
     const subCenter = subData.nodes.find((n) => n.center)
     if (!subCenter) continue
 
-    // 子图谱中心节点（替换原节点显示，往后退入 3D 空间）
+    // 子图谱中心节点（替换原节点显示）
     const subCenterNode = {
       id: childId,
       name: childNode.name,
       x: childNode.x,
       y: childNode.y,
-      z: -120,
+      z: 0,
       r: Math.max(14, nodeRadius(childNode.name, 0) * 0.85),
       font: Math.max(11, nodeFont(childNode.name) * 0.8),
       isCenter: false,
@@ -721,21 +775,16 @@ const displayGraph = computed(() => {
       return true
     })
 
-    // 动态子图谱半径（球面）
+    // 动态子图谱半径（2D圆周分布）
     const subCount = subChildNodes.length
-    const subRadius = Math.max(70, Math.min(130, 50 + subCount * 8))
+    const subRadius = Math.max(60, Math.min(110, 40 + subCount * 7))
 
     const subNodesWithPos = []
     subChildNodes.forEach((sn, i) => {
-      // 球面分布（斐波那契球面算法）
-      const n = subCount
-      const phi = Math.acos(1 - 2 * (i + 0.5) / n)       // 极角 0~π
-      const theta = Math.PI * (1 + Math.sqrt(5)) * (i + 0.5) // 方位角
-      // 球面坐标 → 笛卡尔坐标，穹顶朝前（z 方向）
-      const r = subRadius
-      const sx = r * Math.sin(phi) * Math.cos(theta)
-      const sy = r * Math.sin(phi) * Math.sin(theta)
-      const sz = -r * Math.cos(phi) - 120   // 球心在 z=-120，穹顶朝前
+      // 2D 圆周均匀分布
+      const angle = (i / subCount) * Math.PI * 2 - Math.PI / 2
+      const sx = subRadius * Math.cos(angle)
+      const sy = subRadius * Math.sin(angle)
 
       const x = childNode.x + sx
       const y = childNode.y + sy
@@ -743,7 +792,7 @@ const displayGraph = computed(() => {
       subNodesWithPos.push({
         id: `sub_${childId}_${sn.id}`,
         name: sn.name,
-        x, y, z: sz, r: r2,
+        x, y, z: 0, r: r2,
         font: Math.max(9, nodeFont(sn.name) * 0.7),
         isCenter: false,
         isBridge: false,
@@ -800,13 +849,12 @@ const displayGraph = computed(() => {
 
   // ── 斥力迭代：对可变节点（子节点）做排斥+聚拢 ──
   const repulsedNodes = applyRepulsion(allNodes, {
-    iterations: 15,
-    minDist: 28,
-    centerGravity: 0.03,
+    iterations: 35,
+    minDist: 40,
     damping: 0.82,
   })
 
-  // 重新计算所有边的坐标（斥力后节点位置变了）—— 3D 投影在 projectedGraph 中处理
+  // 重新计算所有边的坐标（斥力后节点位置变了）—— 坐标在 projectedGraph 中处理
   const edgeNodesMap = {}
   for (const n of repulsedNodes) edgeNodesMap[n.id] = n
 
@@ -837,21 +885,16 @@ const displayGraph = computed(() => {
   return { center: { ...base.center, z: 0 }, nodes: finalNodes, edges: repulsedEdges }
 })
 
-// ── 3D 投影后的图谱（展开时应用透视投影）──
-// 关键优化：wrapper 对象只在结构变化时创建一次，旋转期间仅原地修改属性
-// 使用 ref (非 shallowRef) 以确保嵌套属性变更能被 Vue 追踪，实现精准 DOM 更新
+// ── 投影后的图谱 ──
 const projectedGraph = ref(null)
 let cachedNodes = null
 let cachedEdges = null
 let cachedCenter = null
 let cachedNodeIds = ''
 let lastExpanded = false
-let pgWrapper = null    // 稳定的 wrapper 对象引用，旋转期间永不替换
-let pgNodesArr = null   // 稳定的 projectedNodes 数组引用
-let pgEdgesArr = null   // 稳定的 projectedEdges 数组引用
-
-const PROJ_CX = W / 2
-const PROJ_CY = H / 2
+let pgWrapper = null
+let pgNodesArr = null
+let pgEdgesArr = null
 
 function rebuildProjectionBase() {
   const dg = displayGraph.value
@@ -909,63 +952,19 @@ function rebuildProjectionBase() {
 
 function doProject() {
   if (!cachedNodes) return
-  const cx = PROJ_CX, cy = PROJ_CY
-
-  if (!expanded.value) {
-    for (const n of cachedNodes) {
-      n.px = n._bx
-      n.py = n._by
-      n.pscale = 1
-      n.pdepth = 0
-      n.popacity = 1
-    }
-    cachedCenter.px = cachedCenter._bx
-    cachedCenter.py = cachedCenter._by
-    cachedCenter.pscale = 1
-    cachedCenter.pdepth = 0
-    cachedCenter.popacity = 1
-
-    for (const e of cachedEdges) {
-      let srcNode, tgtNode
-      if (e.isSubEdge) {
-        srcNode = cachedNodes.find(n => n.id === e.resolvedSrcId)
-        tgtNode = cachedNodes.find(n => n.id === e.resolvedTgtId)
-      } else {
-        srcNode = cachedNodes.find(n => n.id === (e.source || e.resolvedSrcId))
-        tgtNode = cachedNodes.find(n => n.id === (e.target || e.resolvedTgtId))
-      }
-      if (!srcNode || !tgtNode) {
-        e.x1 = 0; e.y1 = 0; e.x2 = 0; e.y2 = 0
-        continue
-      }
-      const srcR = srcNode.r || 10
-      const tgtR = tgtNode.r || 10
-      const dx = tgtNode.px - srcNode.px
-      const dy = tgtNode.py - srcNode.py
-      const len = Math.hypot(dx, dy) || 1
-      const ux = dx / len, uy = dy / len
-      e.x1 = srcNode.px + ux * (srcR + 3)
-      e.y1 = srcNode.py + uy * (srcR + 3)
-      e.x2 = tgtNode.px - ux * (tgtR + 3)
-      e.y2 = tgtNode.py - uy * (tgtR + 3)
-    }
-
-    projectedGraph.value = {
-      projectedNodes: pgNodesArr,
-      projectedEdges: pgEdgesArr,
-      projectedCenter: cachedCenter,
-    }
-    return
-  }
 
   for (const n of cachedNodes) {
-    const p = project3D(n._bx, n._by, n.z || 0, cx, cy)
-    n.px = p.x; n.py = p.y; n.pscale = p.scale; n.pdepth = p.depthZ
-    n.popacity = depthOpacity(p.depthZ)
+    n.px = n._bx
+    n.py = n._by
+    n.pscale = 1
+    n.pdepth = 0
+    n.popacity = 1
   }
-  const p = project3D(cachedCenter._bx, cachedCenter._by, cachedCenter.z || 0, cx, cy)
-  cachedCenter.px = p.x; cachedCenter.py = p.y
-  cachedCenter.pscale = p.scale; cachedCenter.pdepth = p.depthZ
+  cachedCenter.px = cachedCenter._bx
+  cachedCenter.py = cachedCenter._by
+  cachedCenter.pscale = 1
+  cachedCenter.pdepth = 0
+  cachedCenter.popacity = 1
 
   const nodeMap = {}
   for (const n of cachedNodes) nodeMap[n.id] = n
@@ -982,10 +981,11 @@ function doProject() {
     }
     if (!srcNode || !tgtNode) {
       e.x1 = 0; e.y1 = 0; e.x2 = 0; e.y2 = 0
+      e.pathD = null
       continue
     }
-    const srcR = (srcNode.r || 10) * srcNode.pscale
-    const tgtR = (tgtNode.r || 10) * tgtNode.pscale
+    const srcR = srcNode.r || 10
+    const tgtR = tgtNode.r || 10
     const dx = tgtNode.px - srcNode.px
     const dy = tgtNode.py - srcNode.py
     const len = Math.hypot(dx, dy) || 1
@@ -994,14 +994,18 @@ function doProject() {
     e.y1 = srcNode.py + uy * (srcR + 3)
     e.x2 = tgtNode.px - ux * (tgtR + 3)
     e.y2 = tgtNode.py - uy * (tgtR + 3)
+    // Curve only for root→bridge edges, straight for others
+    if (e.isCurveEdge) {
+      const nx = -uy, ny = ux
+      const curveAmt = Math.min(60, len * 0.25)
+      const mx = (e.x1 + e.x2) / 2 + nx * curveAmt
+      const my = (e.y1 + e.y2) / 2 + ny * curveAmt
+      e.pathD = `M${e.x1},${e.y1} Q${mx},${my} ${e.x2},${e.y2}`
+    } else {
+      e.pathD = `M${e.x1},${e.y1} L${e.x2},${e.y2}`
+    }
   }
 
-  cachedNodes.sort((a, b) => {
-    const da = Math.round(a.pdepth / 40) * 40
-    const db = Math.round(b.pdepth / 40) * 40
-    if (da !== db) return da - db
-    return String(a.id).localeCompare(String(b.id))
-  })
   projectedGraph.value = {
     projectedNodes: pgNodesArr,
     projectedEdges: pgEdgesArr,
@@ -1011,15 +1015,7 @@ function doProject() {
 
 watch(displayGraph, () => {
   rebuildProjectionBase()
-  if (props.show && expanded.value && !autoRotateRAF) {
-    startAutoRotate()
-  }
 }, { immediate: true })
-
-watch(expanded, (v) => {
-  if (v) startAutoRotate()
-  else stopAutoRotate()
-})
 
 watch(expanded, (v) => {
   if (v !== lastExpanded) {
@@ -1199,41 +1195,17 @@ function onCanvasMouseDown(e) {
   const canvas = canvasRef.value
   if (!canvas) return
   const rect = canvas.getBoundingClientRect()
-  const pos = clientToSvg(e.clientX, e.clientY)
-  const dx = pos.x - PROJ_CX
-  const dy = pos.y - PROJ_CY
-  const dist = Math.hypot(dx, dy)
-  const insideRing = expanded.value && dist <= CONTROL_RADIUS
-  if (insideRing) {
-    isRotating.value = true
-  }
   panStart = {
     x: e.clientX, y: e.clientY,
     panX: panX.value, panY: panY.value,
-    camX: camAngleX.value, camY: camAngleY.value,
     canvasLeft: rect.left, canvasTop: rect.top,
     canvasW: rect.width, canvasH: rect.height,
-    insideRing,
   }
 }
 
 function onCanvasMouseMove(e) {
-  const canvas = canvasRef.value
-  if (!canvas) return
-  const pos = clientToSvg(e.clientX, e.clientY)
-  const dx = pos.x - PROJ_CX
-  const dy = pos.y - PROJ_CY
-  const dist = Math.hypot(dx, dy)
-
-  if (expanded.value && dist <= CONTROL_RADIUS) {
-    mouseInsideRing.value = true
-    mouseNormX.value = Math.max(-1, Math.min(1, dx / CONTROL_RADIUS))
-    mouseNormY.value = Math.max(-1, Math.min(1, dy / CONTROL_RADIUS))
-  } else {
-    mouseInsideRing.value = false
-  }
-
   if (!panStart) return
+  const pos = clientToSvg(e.clientX, e.clientY)
 
   if (draggingNode) {
     nodeOverrides.value[draggingNode.id] = { x: pos.x, y: pos.y }
@@ -1245,13 +1217,6 @@ function onCanvasMouseMove(e) {
         doProject()
       }
     }
-  } else if (panStart.insideRing) {
-    const ddx = e.clientX - panStart.x
-    const ddy = e.clientY - panStart.y
-    if (Math.abs(ddx) > 2 || Math.abs(ddy) > 2) pannedDuringDrag = true
-    camAngleY.value = panStart.camY + ddx * 0.3
-    camAngleX.value = Math.max(-60, Math.min(80, panStart.camX + ddy * 0.2))
-    if (cachedNodes) doProject()
   } else {
     const scale = Math.min(panStart.canvasW / W, panStart.canvasH / H)
     const newPanX = panStart.panX + (e.clientX - panStart.x) / scale
@@ -1268,19 +1233,12 @@ function onCanvasMouseUp() {
   panStart = null
   draggingNode = null
   draggingNodeId.value = null
-  if (!autoRotateRAF) {
-    isRotating.value = false
-  }
 }
 
 function onCanvasMouseLeave() {
-  mouseInsideRing.value = false
   panStart = null
   draggingNode = null
   draggingNodeId.value = null
-  if (!autoRotateRAF) {
-    isRotating.value = false
-  }
 }
 
 function onNodeMouseDown(e, n) {
@@ -1353,11 +1311,6 @@ function resetState() {
   expanded.value = false
   collapsing.value = false
   draggingNodeId.value = null
-  camAngleX.value = 18
-  camAngleY.value = 0
-  mouseInsideRing.value = false
-  mouseNormX.value = 0
-  mouseNormY.value = 0
   expansionData.value = {}
   nodeOverrides.value = {}
   zoom.value = 1
@@ -1369,13 +1322,11 @@ function onKey(e) { if (e.key === 'Escape' && props.show) close() }
 onMounted(() => document.addEventListener('keydown', onKey))
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onKey)
-  stopAutoRotate()
 })
 
 watch(() => props.show, (v) => {
   if (!v) {
     resetState()
-    stopAutoRotate()
   }
 })
 </script>
