@@ -2,6 +2,11 @@
   <div class="max-w-6xl mx-auto px-4 py-10">
     <SectionTitle sub="古代艺术品图文库 · 诗画互证">艺术展厅</SectionTitle>
 
+    <router-link v-if="backConcept" :to="backHref"
+      class="inline-flex items-center gap-1.5 mt-3 text-sm text-shiqing hover:underline tracking-wider">
+      ← 返回「{{ backConcept.name }}」
+    </router-link>
+
     <!-- 朝代检索：全部朝代（下拉）+ 唐 + 宋 -->
     <div class="flex flex-wrap items-center gap-2 mt-6 text-sm">
       <div class="relative">
@@ -103,6 +108,10 @@
           </div>
           <!-- 右侧：作品介绍 -->
           <div class="md:w-1/2 p-6 md:max-h-[85vh] overflow-y-auto">
+            <router-link v-if="backConcept" :to="backHref"
+              class="inline-flex items-center gap-1 text-xs text-shiqing hover:underline mb-3">
+              ← 返回「{{ backConcept.name }}」
+            </router-link>
             <h3 class="font-song text-2xl font-bold pr-10">《{{ detail.name }}》</h3>
             <p class="text-sm text-qianhui mt-1">{{ detail.dynasty_period }} · {{ detail.artist }}</p>
             <div class="flex gap-1.5 mt-3 flex-wrap">
@@ -135,13 +144,29 @@
 </template>
 
 <script setup>
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { getArtworkDetail, getArtworkList } from '../api'
 import SectionTitle from '../components/SectionTitle.vue'
 import BackToTop from '../components/BackToTop.vue'
 
 const route = useRoute()
+
+// 从意象详情页「诗画相映」进入时，携带来源意象 + 目标艺术品，供返回入口定位
+const backConcept = computed(() => {
+  const id = route.query.concept
+  if (!id) return null
+  return {
+    id: Number(id),
+    name: route.query.conceptName || '意象',
+    artworkId: route.query.id ? Number(route.query.id) : null,
+  }
+})
+const backHref = computed(() =>
+  backConcept.value?.artworkId
+    ? `/concept/${backConcept.value.id}?artwork=${backConcept.value.artworkId}`
+    : `/concept/${backConcept.value.id}`)
+
 const items = ref([])
 const filters = ref({ dynasties: [], subjects: [] })
 const dynasty = ref('')

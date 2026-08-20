@@ -15,6 +15,7 @@ export default {
       fontFamily: {
         song: ['"Noto Serif SC"', '"Songti SC"', 'STSong', 'SimSun', 'serif'],
         kai: ['"Kaiti SC"', 'STKaiti', 'KaiTi', '"Noto Serif SC"', 'serif'],
+        fang: ['FangSong', 'STFangsong', 'FangSong_GB2312', '仿宋', 'serif'],
         hei: ['"Noto Sans SC"', '"PingFang SC"', '"Microsoft YaHei"', 'sans-serif'],
       },
       boxShadow: {

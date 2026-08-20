@@ -17,11 +17,11 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
-  scrollBehavior: () => ({ top: 0 }),
+  scrollBehavior: (to, from, savedPosition) => (savedPosition || { top: 0 }),
 })
 
 router.afterEach((to) => {
-  document.title = to.meta.title ? `${to.meta.title} · 诗象志` : '诗象志 · 一字藏万象，一诗见千年'
+  document.title = to.meta.title ? `${to.meta.title} · 诗象万千` : '诗象万千 · 游心万象，一眼千年'
 })
 
 export default router

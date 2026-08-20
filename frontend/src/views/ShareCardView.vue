@@ -52,12 +52,12 @@ async function downloadPng() {
   pngBusy.value = true
   try {
     const dataUrl = await svgToPngDataUrl(svg.value, 720)
-    downloadDataUrl(dataUrl, '诗象志-意象卡片.png')
+    downloadDataUrl(dataUrl, '诗象万千-意象卡片.png')
   } finally { pngBusy.value = false }
 }
 
 function downloadSvg() {
-  if (svg.value) downloadText(svg.value, '诗象志-意象卡片.svg')
+  if (svg.value) downloadText(svg.value, '诗象万千-意象卡片.svg')
 }
 
 async function copyLink() {

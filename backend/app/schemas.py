@@ -27,6 +27,7 @@ class ConceptBrief(BaseModel):
     is_featured: bool = False
     classic_clause: Optional[str] = None
     artwork_thumb: Optional[str] = None
+    artwork_image: Optional[str] = None   # 标注精选艺术品高清图（无精选为 None）
     poetry_count: int = 0
 
     class Config:

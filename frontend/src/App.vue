@@ -4,10 +4,10 @@
     <header class="sticky top-0 z-40 bg-xuanzhi/85 backdrop-blur-md border-b border-shiqing/10">
       <nav class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
         <router-link to="/" class="flex items-center gap-3 group">
-          <span class="seal group-hover:scale-105 transition-transform">诗象</span>
-          <div class="leading-tight">
-            <div class="font-song text-xl font-bold tracking-[0.3em] text-shiqing">诗象志</div>
-            <div class="text-[10px] text-qianhui tracking-wider">一字藏万象 · 一诗见千年</div>
+          <img src="/logo.png" alt="诗象万千" class="h-12 w-auto group-hover:scale-105 transition-transform" />
+          <div class="hidden sm:flex flex-col justify-center">
+            <img src="/wanxiang-logo.png" alt="诗象万千" class="h-7 w-auto self-start" />
+            <span class="mt-1 text-[10px] tracking-[0.2em] text-moyan/60 whitespace-nowrap">古诗词意象解读智能交互平台</span>
           </div>
         </router-link>
         <div class="flex items-center gap-1 sm:gap-2 text-sm">
@@ -48,9 +48,7 @@
          修复 /concept/1→/concept/2 组件复用不刷新、/artworks?id=N 不 reopen 的问题） -->
     <main class="flex-1">
       <router-view v-slot="{ Component }">
-        <transition name="fade" mode="out-in">
-          <component :is="Component" :key="$route.fullPath" />
-        </transition>
+        <component :is="Component" :key="$route.fullPath" />
       </router-view>
     </main>
 
@@ -65,8 +63,8 @@
     <footer class="mt-20 border-t border-shiqing/10 bg-white/30">
       <div class="max-w-6xl mx-auto px-4 py-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-qianhui">
         <div class="flex items-center gap-2">
-          <span class="seal !w-7 !h-7 !text-[10px]">诗象</span>
-          <span>诗象志 · 古诗词意象智能体</span>
+          <img src="/logo.png" alt="诗象万千" class="h-10 w-auto" />
+          <span>诗象万千 · 古诗词意象解读智能交互平台</span>
         </div>
         <div class="text-center sm:text-right leading-5">
           <div>数据来源：上海图书馆开放数据（诗文库 / 古代艺术品图文库）</div>

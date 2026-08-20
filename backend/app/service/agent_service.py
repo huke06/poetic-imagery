@@ -176,7 +176,7 @@ def _build_rag_prompt(concepts, poetries, artworks, question, shared_pids, menti
                           artist=a["artist"], dynasty=a["dynasty"])
             parts.append(f"[{idx}]《{a['name']}》（{a['dynasty']}·{a['artist']}）")
     prompt = (
-        "你是「诗象志」的古诗词意象专家，擅于陪人读诗、解诗、探索意象。请基于以下资料回答用户问题。\n"
+        "你是「诗象万千」的古诗词意象专家，擅于陪人读诗、解诗、探索意象。请基于以下资料回答用户问题。\n"
         "回答要求：\n"
         "① 结构：先给一句凝练的核心结论，再分层展开（含义→情感色彩→代表诗句→演变或延伸），最后可自然收束；\n"
         "② 引用诗篇必须用《篇名》（朝代·作者）格式，且只能引用资料中真实出现的篇目，不得编造出处；\n"
@@ -261,9 +261,9 @@ def _smalltalk(text: str) -> str | None:
     """轻量寒暄/身份/致谢识别，让助手能自然聊天"""
     t = (text or "").strip().lower()
     if any(w in t for w in ("你好", "您好", "嗨", "哈喽", "hello", "hi", "在吗", "早上好", "下午好", "晚上好")):
-        return "你好呀，我是「诗象志」的灵犀助手。可以问我意象的含义、演变与代表诗句，或让我依格律为你创诗。比如：「月」在古诗里有哪些含义？"
+        return "你好呀，我是「诗象万千」的灵犀助手。可以问我意象的含义、演变与代表诗句，或让我依格律为你创诗。比如：「月」在古诗里有哪些含义？"
     if any(w in t for w in ("你是谁", "你叫什么", "介绍一下你", "你能做什么", "你会什么", "帮助", "怎么用", "使用说明", "有什么功能")):
-        return "我是「诗象志」灵犀助手，能陪你漫游古诗词意象世界。\n\n你可以问我：\n· 某个意象（如「月」「夕阳」「柳」「雁」）的含义与演变；\n· 哪些诗人最爱用某意象、代表诗句；\n· 多个意象的共现关系；\n· 也可切换到「意象创诗」，让我依格律为你写诗。"
+        return "我是「诗象万千」灵犀助手，能陪你漫游古诗词意象世界。\n\n你可以问我：\n· 某个意象（如「月」「夕阳」「柳」「雁」）的含义与演变；\n· 哪些诗人最爱用某意象、代表诗句；\n· 多个意象的共现关系；\n· 也可切换到「意象创诗」，让我依格律为你写诗。"
     if any(w in t for w in ("谢谢", "多谢", "感谢", "thanks", "辛苦", "很棒", "真好", "不错")):
         return "不客气～能陪你一起读诗，是我的荣幸。还想探索哪个意象呢？"
     if any(w in t for w in ("再见", "拜拜", "bye", "告辞", "晚安")):
@@ -411,7 +411,7 @@ def ask(db: Session, question: str, context_msgs: list[dict] | None = None) -> d
     if llm.llm_available():
         # 对话历史放入 system 消息——LLM 必须根据历史解析当前问题中的指代（"他"、"这首诗"等）
         system_text = (
-            "你是「诗象志」的博学古典诗词助手，性格儒雅、有温度，像一位随时陪人读诗解诗的诗友。"
+            "你是「诗象万千」的博学古典诗词助手，性格儒雅、有温度，像一位随时陪人读诗解诗的诗友。"
             "回答时优先引用本地资料中的篇目并标注《篇名》（朝代·作者）出处；"
             "当资料不足以完整回答时，请自由运用古典诗词学识补充作答，"
             "并用『据本地资料』与『学识补充』加以区分。"
@@ -663,7 +663,14 @@ def compose(db: Session, concepts: list, style: str, theme: str = "") -> dict:
     context = "；".join(cinfo) if cinfo else ""
 
     if llm.llm_available():
-        theme_line = f"④ 情感基调为「{theme}」，请融情入景；" if theme else ""
+        if theme:
+            tones = [t for t in re.split(r"[、，,\s]+", theme) if t]
+            if len(tones) > 1:
+                theme_line = f"④ 情感基调为「{'、'.join(tones)}」，请将多种情绪融合为统一、含蓄的整体诗境（融情入景、气韵贯通），而非机械罗列各情绪；"
+            else:
+                theme_line = f"④ 情感基调为「{theme}」，请融情入景；"
+        else:
+            theme_line = "④ 情感基调由你根据意象、诗体与语境自行把握；"
         prompt = (
             f"请以古典诗词意象「{'、'.join(concepts)}」为题，创作一首{style}。\n"
             f"要求：① 全诗 {spec['lines']} 句，每句 {spec['chars']} 字（不含标点）；"

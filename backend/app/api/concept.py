@@ -263,11 +263,12 @@ def concept_list(
             .filter(ConceptPoetryRel.concept_id == c.id, ConceptPoetryRel.weight >= 2)
             .order_by(ConceptPoetryRel.weight.desc()).first()
         )
-        thumb = (
-            db.query(Artwork.thumb_url)
+        art = (
+            db.query(Artwork.image_url, Artwork.thumb_url)
             .join(ConceptArtworkRel, ConceptArtworkRel.artwork_id == Artwork.id)
             .filter(ConceptArtworkRel.concept_id == c.id)
-            .order_by(ConceptArtworkRel.weight.desc()).first()
+            # 有标注艺术品即展示：优先精选标注品，其次按关联权重取最高
+            .order_by(Artwork.is_featured.desc(), ConceptArtworkRel.weight.desc()).first()
         )
         poetry_count = db.query(func.count(func.distinct(ConceptPoetryRel.poetry_id))).filter_by(concept_id=c.id).scalar()
         items.append({
@@ -277,7 +278,8 @@ def concept_list(
             "emotion_tags": tags, "emotion_mains": mains, "theme_color": c.theme_color,
             "is_featured": bool(c.is_featured),
             "classic_clause": classic.clause if classic else "",
-            "artwork_thumb": thumb[0] if thumb else "",
+            "artwork_thumb": art[1] if art else "",
+            "artwork_image": (art[0] or art[1]) if art else "",
             "poetry_count": poetry_count,
         })
     return ApiResp(data={"total": len(items), "items": items, "emotion_tree": emotion_tree_sorted})

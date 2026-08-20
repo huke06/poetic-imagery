@@ -5,8 +5,8 @@
         <!-- 头图 -->
         <div class="relative px-8 pt-8 pb-5 text-center" style="background: linear-gradient(180deg, #16283F, #2B4C7E)">
           <div class="seal mx-auto !w-14 !h-14 !text-lg">入门</div>
-          <h3 class="font-song text-2xl font-bold text-xuanzhi mt-4 tracking-widest">欢迎使用「诗象志」</h3>
-          <p class="text-xuanzhi/70 text-sm mt-2">一字藏万象 · 一诗见千年 —— 一分钟了解四大功能</p>
+          <h3 class="font-song text-2xl font-bold text-xuanzhi mt-4 tracking-widest">欢迎使用「诗象万千」</h3>
+          <p class="text-xuanzhi/70 text-sm mt-2">游心万象，一眼千年 —— 一分钟了解四大功能</p>
         </div>
 
         <div class="px-8 py-6">

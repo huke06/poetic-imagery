@@ -35,3 +35,4 @@ Thumbs.db
 .scratch/
 .tmp*/
 *.log
+backend/cooccurrence_*_test.csv

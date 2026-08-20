@@ -63,14 +63,15 @@
     <div v-if="loading" class="py-20 text-center text-qianhui">加载中…</div>
     <div v-else-if="!items.length" class="py-20 text-center text-qianhui">未找到匹配的意象</div>
     <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
-      <ConceptCard v-for="(c, i) in items" :key="c.id" :concept="c" class="rise-in" :style="{ animationDelay: i * 0.06 + 's' }" />
+      <ConceptCard v-for="(c, i) in items" :key="c.id" :concept="c" :data-concept-id="c.id" class="rise-in" :style="{ animationDelay: i * 0.06 + 's' }" />
     </div>
     <BackToTop />
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import { getConceptList } from '../api'
 import BackToTop from '../components/BackToTop.vue'
 import ConceptCard from '../components/ConceptCard.vue'
@@ -128,5 +129,58 @@ async function load() {
     loading.value = false
   }
 }
-onMounted(load)
+// 进入详情前，记录画廊筛选状态 + 目标卡片 ID + 滚动位置，返回时恢复
+onBeforeRouteLeave((to) => {
+  if (to.name === 'concept-detail') {
+    sessionStorage.setItem('gallery:return', JSON.stringify({
+      conceptId: to.params.id,
+      scrollY: window.scrollY,
+      filterMode: filterMode.value,
+      activeCategory: activeCategory.value,
+      activeSub: activeSub.value,
+      keyword: keyword.value,
+      activeEmotionMain: activeEmotionMain.value,
+      activeEmotion: activeEmotion.value,
+    }))
+  }
+})
+
+onMounted(async () => {
+  const saved = sessionStorage.getItem('gallery:return')
+  if (saved) {
+    sessionStorage.removeItem('gallery:return')
+    try {
+      const s = JSON.parse(saved)
+      filterMode.value = s.filterMode
+      activeCategory.value = s.activeCategory
+      activeSub.value = s.activeSub
+      keyword.value = s.keyword
+      activeEmotionMain.value = s.activeEmotionMain
+      activeEmotion.value = s.activeEmotion
+      await load()
+      await nextTick()
+      const el = document.querySelector(`[data-concept-id="${s.conceptId}"]`)
+      if (el) {
+        const r = el.getBoundingClientRect()
+        const y = r.top - (window.innerHeight - r.height) / 2
+        window.scrollTo(0, Math.max(0, y)) // 目标卡片居中（早于绘制，无「先到顶再跳」闪烁）
+        el.classList.add('is-highlighted')
+        setTimeout(() => el.classList.remove('is-highlighted'), 1500)
+      } else if (s.scrollY) {
+        window.scrollTo(0, s.scrollY)
+      }
+      return
+    } catch { /* 解析失败则走首次加载 */ }
+  }
+  await load()
+})
 </script>
+
+<style scoped>
+/* 返回画廊时的目标卡片高亮：主题色淡描边 + 柔光晕（--tc 由卡片注入，随其主题色） */
+:deep(.concept-card.is-highlighted) {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--tc) 50%, transparent),
+    0 0 28px color-mix(in srgb, var(--tc) 26%, transparent);
+}
+</style>

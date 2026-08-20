@@ -360,7 +360,7 @@ async function generateShareCard() {
       ${escapeXml(reportText)}
     </div>
   </foreignObject>
-  <text x="56" y="${cardH - 40}" font-size="12" fill="#9A9A9A" font-family="'PingFang SC','Microsoft YaHei',sans-serif">诗象志 · 一字藏万象，一诗见千年</text>
+  <text x="56" y="${cardH - 40}" font-size="12" fill="#9A9A9A" font-family="'PingFang SC','Microsoft YaHei',sans-serif">诗象万千 · 游心万象，一眼千年</text>
   <rect x="620" y="${cardH - 70}" width="44" height="44" rx="4" fill="#9B2C1F" opacity="0.9"/>
   <text x="642" y="${cardH - 40}" font-size="20" fill="#F5F1E8" text-anchor="middle" font-family="'Kaiti SC','STKaiti','KaiTi',serif">诗象</text>
   <g transform="translate(56, ${cardH - 130}) scale(0.9)">${qrSvg}</g>

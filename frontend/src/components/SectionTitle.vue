@@ -5,7 +5,7 @@
       <slot />
     </h2>
     <span class="h-px flex-1 bg-gradient-to-r from-current to-transparent opacity-20"></span>
-    <span v-if="sub" class="text-xs text-qianhui tracking-wider">{{ sub }}</span>
+    <span v-if="sub" class="section-sub text-xs text-qianhui tracking-wider">{{ sub }}</span>
   </div>
 </template>
 
