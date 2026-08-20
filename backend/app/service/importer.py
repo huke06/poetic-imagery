@@ -711,7 +711,22 @@ def parse_csv(text: str) -> tuple[str, list[dict] | None, list[str]]:
                              "count": count, "ratio": ratio})
         return "emotion_stats", rows, errors
 
-    # ── 朝代出现频次统计表（dynasty_occurrence.csv） ──
+    # ── 朝代出现频次统计表：长表格式 word,dynasty,count ──
+    if {"word", "dynasty", "count"} <= headers:
+        rows = []
+        for i, row in enumerate(reader, start=2):
+            word = (row.get("word") or "").strip()
+            dynasty = (row.get("dynasty") or "").strip()
+            if not word or not dynasty:
+                continue
+            try:
+                cnt = int(float((row.get("count") or "0").strip() or 0))
+            except ValueError:
+                continue
+            rows.append({"word": word, "dynasty": dynasty, "count": cnt})
+        return "dynasty_stats", rows, errors
+
+    # ── 朝代出现频次统计表（dynasty_occurrence.csv，宽表） ──
     if {"word", "total_occurrence"} <= headers or {"word", "corrected_freq"} <= headers:
         from ..utils.taxonomy import DYNASTY_GROUPS
         period_cols = [h for h in (reader.fieldnames or [])
