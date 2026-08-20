@@ -103,8 +103,8 @@ def validate(data: dict) -> tuple[list[str], list[str]]:
 
 def validate_against_db(db: Session, data: dict) -> list[str]:
     """结合库状态的校验：
-    - 数据包未提供情感标签时，若意象不存在于库中则报错（新意象必须有标签）
-    - 数据包提供了情感标签时，逐条核对关联情感是否越界（新意象按包内标签，已有意象按库内标签）
+    - 数据包未提供情感标签时不做强校验（emotion_tags 选填）
+    - 数据包提供了情感标签时，逐条核对关联情感是否越界
     """
     errors = []
     c = data.get("concept") or {}
@@ -116,10 +116,7 @@ def validate_against_db(db: Session, data: dict) -> list[str]:
         errors.append(f"「{name}」看起来是模板占位文字，请先在模板中填写真实意象名再上传")
         return errors
     tags = set(re_split(c.get("emotion_tags", "")))
-    existing = db.query(Concept).filter_by(name=name).first()
     if not tags:
-        if not existing:
-            errors.append(f"「{name}」为新意象，必须提供 emotion_tags（情感标签）")
         return errors
     # 关联情感越界检查（数据包提供了标签才查）
     for p in data.get("poetries", []):

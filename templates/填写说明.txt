@@ -14,7 +14,7 @@
   category_main   一级分类：自然类/社会生活类/人类自身类/人造物类/虚拟类
   category_sub    二级类目：天文气象/山水地理/植物/动物/情感心理/…
   aliases         别称，逗号分隔（含逗号时整格加英文双引号）
-  emotion_tags    情感标签，空格分隔（必填，3-5 个）
+  emotion_tags    情感标签，空格分隔（选填，3-5 个）
   origin_dynasty  起源朝代      peak_dynasty  鼎盛朝代
   theme_color     主题色（留空，系统按分类自动分配传统色）
   original_meaning  本义        poetic_meaning  引申义

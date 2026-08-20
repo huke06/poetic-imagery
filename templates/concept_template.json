@@ -3,7 +3,7 @@
     "用途": "意象导入 JSON 模板（功能最全）。可删除不需要的段落（couplets/artworks/relations 均可省略），也可作为已有意象的「补充包」只写部分段落。",
     "批量": "支持三种写法：① 单个意象对象（如本文件）② {\"concepts\": [意象对象, ...]} ③ 顶层数组 [意象对象, ...]",
     "上传": "管理后台 /admin → 批量导入 → 上传（可与 CSV 多选同传）",
-    "校验": "emotion 必须在 concept.emotion_tags 内；补充包可省略 emotion_tags（继承库中已有标签）"
+    "校验": "emotion 若填写，须在 concept.emotion_tags 内；emotion_tags 选填，省略时跳过情感越界校验"
   },
   "concept": {
     "name": "意象名（必填）",
@@ -13,7 +13,7 @@
     "aliases": "别称1,别称2（用于问答关键词匹配，逗号分隔）",
     "original_meaning": "本义解释（这个事物本身是什么）",
     "poetic_meaning": "诗词引申义与文化内涵（为什么诗人爱用它）",
-    "emotion_tags": "情感标签1,情感标签2,情感标签3,情感标签4（新意象必填，3-5个）",
+    "emotion_tags": "情感标签1,情感标签2,情感标签3,情感标签4（选填，3-5个）",
     "origin_dynasty": "起源朝代（如：先秦）",
     "peak_dynasty": "鼎盛朝代（如：唐）",
     "description": "演变史：按朝代脉络写意象如何从萌芽到鼎盛再到转型"
