@@ -92,8 +92,8 @@
               }"
               @mousedown.stop="onNodeMouseDown($event, n)"
               @click="select(n)"
-              @mouseenter="hovered = n.id"
-              @mouseleave="hovered = null">
+              @mouseenter="onNodeHover(n.id)"
+              @mouseleave="onNodeLeave">
               <g :class="[
                 n.isSubNode ? 'sub-node-enter' : '',
                 n.isSubCenter ? 'sub-center-enter' : '',
@@ -177,7 +177,7 @@
             </p>
             <p v-if="n.edge?.verse" class="verse-text text-moyan/90 mt-1.5 leading-6 text-[12px] whitespace-pre-line">{{ n.edge.verse }}</p>
             <p v-if="n.edge?.description" class="text-qianhui mt-1 text-[11px] leading-5">{{ n.edge.description }}</p>
-            <button v-if="n.concept_id" class="mt-2 text-[11px] hover:underline pointer-events-auto font-semibold"
+            <button v-if="n.conceptExists" class="mt-2 text-[11px] hover:underline pointer-events-auto font-semibold"
               :style="{ color: n.accentColor }"
               @click.stop="goConcept(n.concept_id)">探索该意象 →</button>
           </div>
@@ -229,7 +229,8 @@
   font-size: 12px; line-height: 1.6;
   background: #F5F1E8; box-shadow: 0 0 0 2px var(--accent), 0 14px 36px rgba(0,0,0,0.4);
 }
-.cooc-card-wrapper { pointer-events: auto; }
+.cooc-card-wrapper { pointer-events: none; }
+.cooc-card { pointer-events: auto; }
 .cooc-edges line { opacity: 1; }
 .cooc-pulse { opacity: 0.14; }
 .node-group { cursor: grab; will-change: transform; }
@@ -289,7 +290,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { getConceptCooccurrence, resolveConcept } from '../api'
+import { getConceptCooccurrence, resolveConcept, getConceptList } from '../api'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -301,11 +302,31 @@ const emit = defineEmits(['close'])
 const router = useRouter()
 const selected = ref(null)
 const hovered = ref(null)
+let hoverLeaveTimer = null
+function onNodeHover(id) {
+  if (hoverLeaveTimer) { clearTimeout(hoverLeaveTimer); hoverLeaveTimer = null }
+  hovered.value = id
+}
+function onNodeLeave() {
+  hoverLeaveTimer = setTimeout(() => { hovered.value = null }, 150)
+}
 const W = 1280, H = 800
 const uid = Math.floor(Math.random() * 1e6)
 
 const svgRef = ref(null)
 const canvasRef = ref(null)
+
+// ── 词库中存在的概念ID集合（用于判断桥接词是否可探索）──
+const existingConceptIds = ref(new Set())
+async function loadConceptIds() {
+  try {
+    const data = await getConceptList({ page_size: 1000 })
+    const ids = new Set()
+    for (const c of data?.items || []) ids.add(c.id)
+    existingConceptIds.value = ids
+  } catch { /* silent */ }
+}
+loadConceptIds()
 
 // ── 缩放/平移状态 ──
 const zoom = ref(1)
@@ -1050,16 +1071,16 @@ function svgToScreen(svgX, svgY) {
   const rect = canvas.getBoundingClientRect()
   const scaleX = rect.width / W
   const scaleY = rect.height / H
-  // 考虑 preserveAspectRatio (xMidYMid meet)
   const scale = Math.min(scaleX, scaleY)
   const offsetX = (rect.width - W * scale) / 2
   const offsetY = (rect.height - H * scale) / 2
-  // 应用 zoom/pan 逆变换
-  const adjustedX = (svgX - panX.value) / zoom.value
-  const adjustedY = (svgY - panY.value) / zoom.value
+  // Nodes are inside <g transform="translate(panX,panY) scale(zoom)">
+  // So apply pan/zoom first, then SVG-to-screen scaling
+  const transformedX = svgX * zoom.value + panX.value
+  const transformedY = svgY * zoom.value + panY.value
   return {
-    x: offsetX + adjustedX * scale,
-    y: offsetY + adjustedY * scale,
+    x: offsetX + transformedX * scale,
+    y: offsetY + transformedY * scale,
   }
 }
 
@@ -1084,38 +1105,46 @@ const activeCards = computed(() => {
   const result = []
   const cardW = 224, cardH = 176
 
+  const canvas = canvasRef.value
+  if (!canvas) return result
+  const cw = canvas.clientWidth || W
+  const ch = canvas.clientHeight || H
+  const scale = Math.min(cw / W, ch / H)
+  const offsetX = (cw - W * scale) / 2
+  const offsetY = (ch - H * scale) / 2
+
   for (const n of projectedGraph.value.projectedNodes) {
     if (!ids.has(n.id) || n.isCenter) continue
 
     const edge = edgeForNode(n)
     const accentColor = n.theme_color || themeColor
 
-    // 使用投影坐标
     const useX = n.px !== undefined ? n.px : n.x
     const useY = n.py !== undefined ? n.py : n.y
-    const pos = svgToScreen(useX, useY)
-    const useScale = n.pscale !== undefined ? n.pscale : 1
-    const r = (n.r || 20) * useScale
 
-    // 粗略估计节点屏幕大小
-    const svg = svgRef.value
-    const canvas = canvasRef.value
-    const scale = canvas ? Math.min(canvas.clientWidth / W, canvas.clientHeight / H) : 1
-    const screenR = r * zoom.value * scale
+    const transformedX = useX * zoom.value + panX.value
+    const transformedY = useY * zoom.value + panY.value
+    const screenX = offsetX + transformedX * scale
+    const screenY = offsetY + transformedY * scale
 
-    let screenX = pos.x + screenR + 14
-    if (screenX + cardW > (canvas?.clientWidth || W)) screenX = pos.x - screenR - 14 - cardW
-    screenX = Math.max(8, Math.min((canvas?.clientWidth || W) - cardW - 8, screenX))
-    let screenY = pos.y - cardH / 2
-    screenY = Math.max(8, Math.min((canvas?.clientHeight || H) - cardH - 8, screenY))
+    // 节点在屏幕上的半径（含光晕）
+    const nodeR = (n.r || 20) * zoom.value * scale
+    const visualR = n.isBridge ? nodeR + 6 * zoom.value * scale : nodeR
+
+    let cardX = screenX + visualR + 8
+    if (cardX + cardW > cw - 8) cardX = screenX - visualR - 8 - cardW
+    cardX = Math.max(8, Math.min(cw - cardW - 8, cardX))
+    let cardY = screenY - cardH / 2
+    cardY = Math.max(8, Math.min(ch - cardH - 8, cardY))
 
     result.push({
       ...n,
       edge,
-      screenX,
-      screenY,
+      screenX: cardX,
+      screenY: cardY,
       cardW,
       accentColor,
+      conceptExists: n.concept_id ? existingConceptIds.value.has(n.concept_id) : false,
     })
   }
   return result
@@ -1169,7 +1198,9 @@ function select(n) {
 }
 function clearSelection() {
   if (pannedDuringDrag) { pannedDuringDrag = false; return }
-  selected.value = null; hovered.value = null
+  selected.value = null
+  if (hoverLeaveTimer) { clearTimeout(hoverLeaveTimer); hoverLeaveTimer = null }
+  hovered.value = null
 }
 function goConcept(id) { emit('close'); router.push('/concept/' + id) }
 function close() { emit('close') }
@@ -1307,6 +1338,7 @@ async function expandAllChildren() {
 // ── 重置状态 ──
 function resetState() {
   selected.value = null
+  if (hoverLeaveTimer) { clearTimeout(hoverLeaveTimer); hoverLeaveTimer = null }
   hovered.value = null
   expanded.value = false
   collapsing.value = false
