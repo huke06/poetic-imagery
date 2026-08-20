@@ -157,7 +157,7 @@
 
         <!-- 悬浮/选中详情卡片 -->
         <div v-for="n in activeCards" :key="'card_' + n.id"
-          class="absolute pointer-events-auto z-10 cooc-card-wrapper"
+          class="absolute z-10 cooc-card-wrapper"
           :style="{ left: n.screenX + 'px', top: n.screenY + 'px', width: n.cardW + 'px' }">
           <div class="cooc-card" :style="{ ['--accent']: n.accentColor }">
             <div class="flex items-start justify-between gap-2">
@@ -230,7 +230,8 @@
   background: #F5F1E8; box-shadow: 0 0 0 2px var(--accent), 0 14px 36px rgba(0,0,0,0.4);
 }
 .cooc-card-wrapper { pointer-events: none; }
-.cooc-card { pointer-events: auto; }
+.cooc-card { pointer-events: none; }
+.cooc-card button { pointer-events: auto; }
 .cooc-edges line { opacity: 1; }
 .cooc-pulse { opacity: 0.14; }
 .node-group { cursor: grab; will-change: transform; }
@@ -315,6 +316,8 @@ const uid = Math.floor(Math.random() * 1e6)
 
 const svgRef = ref(null)
 const canvasRef = ref(null)
+const canvasSize = ref({ w: 0, h: 0 })
+let canvasResizeObserver = null
 
 // ── 词库中存在的概念ID集合（用于判断桥接词是否可探索）──
 const existingConceptIds = ref(new Set())
@@ -1090,12 +1093,17 @@ function clientToSvg(clientX, clientY) {
   const rect = canvas.getBoundingClientRect()
   const scaleX = rect.width / W
   const scaleY = rect.height / H
-  const scale = Math.min(scaleX, scaleY)
-  const offsetX = (rect.width - W * scale) / 2
-  const offsetY = (rect.height - H * scale) / 2
-  const svgX = (clientX - rect.left - offsetX) / scale
-  const svgY = (clientY - rect.top - offsetY) / scale
-  return { x: svgX, y: svgY }
+  const aspectScale = Math.min(scaleX, scaleY)
+  const aspectOffsetX = (rect.width - W * aspectScale) / 2
+  const aspectOffsetY = (rect.height - H * aspectScale) / 2
+  // Step 1: client → viewBox (reverse preserveAspectRatio)
+  const viewBoxX = (clientX - rect.left - aspectOffsetX) / aspectScale
+  const viewBoxY = (clientY - rect.top - aspectOffsetY) / aspectScale
+  // Step 2: viewBox → node local coord (reverse <g transform="translate(panX,panY) scale(zoom)">)
+  // viewBox = local * zoom + panX  →  local = (viewBox - panX) / zoom
+  const localX = (viewBoxX - panX.value) / zoom.value
+  const localY = (viewBoxY - panY.value) / zoom.value
+  return { x: localX, y: localY }
 }
 
 // ── 卡片位置计算 ──
@@ -1105,13 +1113,17 @@ const activeCards = computed(() => {
   const result = []
   const cardW = 224, cardH = 176
 
-  const canvas = canvasRef.value
-  if (!canvas) return result
-  const cw = canvas.clientWidth || W
-  const ch = canvas.clientHeight || H
-  const scale = Math.min(cw / W, ch / H)
-  const offsetX = (cw - W * scale) / 2
-  const offsetY = (ch - H * scale) / 2
+  const { w: cw, h: ch } = canvasSize.value
+  if (!cw || !ch) return result
+
+  // 画布到 SVG viewBox 的缩放比（preserveAspectRatio: xMidYMid meet）
+  const aspectScale = Math.min(cw / W, ch / H)
+  const aspectOffsetX = (cw - W * aspectScale) / 2
+  const aspectOffsetY = (ch - H * aspectScale) / 2
+
+  // 节点在 SVG 组内的位置：先应用组变换（pan/zoom），再应用 aspectRatio 缩放
+  // SVG 组内坐标: (px * zoom + panX, py * zoom + panY)
+  // 画布像素: aspectOffset + svgCoord * aspectScale
 
   for (const n of projectedGraph.value.projectedNodes) {
     if (!ids.has(n.id) || n.isCenter) continue
@@ -1122,20 +1134,26 @@ const activeCards = computed(() => {
     const useX = n.px !== undefined ? n.px : n.x
     const useY = n.py !== undefined ? n.py : n.y
 
-    const transformedX = useX * zoom.value + panX.value
-    const transformedY = useY * zoom.value + panY.value
-    const screenX = offsetX + transformedX * scale
-    const screenY = offsetY + transformedY * scale
+    // 应用 SVG <g transform="translate(panX,panY) scale(zoom)"> 变换
+    const gx = useX * zoom.value + panX.value
+    const gy = useY * zoom.value + panY.value
 
-    // 节点在屏幕上的半径（含光晕）
-    const nodeR = (n.r || 20) * zoom.value * scale
-    const visualR = n.isBridge ? nodeR + 6 * zoom.value * scale : nodeR
+    // 应用 preserveAspectRatio 缩放，得到画布像素坐标
+    const screenX = aspectOffsetX + gx * aspectScale
+    const screenY = aspectOffsetY + gy * aspectScale
 
-    let cardX = screenX + visualR + 8
-    if (cardX + cardW > cw - 8) cardX = screenX - visualR - 8 - cardW
-    cardX = Math.max(8, Math.min(cw - cardW - 8, cardX))
+    // 节点屏幕半径
+    const nodeR = (n.r || 20) * zoom.value * aspectScale
+    const visualR = n.isBridge ? nodeR + (8 * zoom.value * aspectScale) : nodeR + (4 * zoom.value * aspectScale)
+
+    // 卡片固定出现在节点右侧，与节点绑定
+    const margin = 12
+    let cardX = screenX + visualR + margin
     let cardY = screenY - cardH / 2
-    cardY = Math.max(8, Math.min(ch - cardH - 8, cardY))
+    // 右边界保护：不超出画布
+    if (cardX + cardW > cw - margin) cardX = cw - cardW - margin
+    cardX = Math.max(margin, cardX)
+    cardY = Math.max(margin, Math.min(ch - cardH - margin, cardY))
 
     result.push({
       ...n,
@@ -1209,9 +1227,12 @@ function close() { emit('close') }
 function onZoom(e) {
   const delta = e.deltaY > 0 ? 0.9 : 1.1
   const newZoom = Math.max(0.3, Math.min(5, zoom.value * delta))
-  const mouseSvg = clientToSvg(e.clientX, e.clientY)
-  panX.value = mouseSvg.x - (mouseSvg.x - panX.value) * (newZoom / zoom.value)
-  panY.value = mouseSvg.y - (mouseSvg.y - panY.value) * (newZoom / zoom.value)
+  const ml = clientToSvg(e.clientX, e.clientY)
+  // Zoom keeps mouse point stationary: viewBoxX before = viewBoxX after
+  // local * zoom + panX = local * newZoom + newPanX
+  // → newPanX = panX + local * (zoom - newZoom)
+  panX.value = panX.value + ml.x * (zoom.value - newZoom)
+  panY.value = panY.value + ml.y * (zoom.value - newZoom)
   zoom.value = newZoom
 }
 
@@ -1235,7 +1256,7 @@ function onCanvasMouseDown(e) {
 }
 
 function onCanvasMouseMove(e) {
-  if (!panStart) return
+  if (!panStart && !draggingNode) return
   const pos = clientToSvg(e.clientX, e.clientY)
 
   if (draggingNode) {
@@ -1248,7 +1269,7 @@ function onCanvasMouseMove(e) {
         doProject()
       }
     }
-  } else {
+  } else if (panStart) {
     const scale = Math.min(panStart.canvasW / W, panStart.canvasH / H)
     const newPanX = panStart.panX + (e.clientX - panStart.x) / scale
     const newPanY = panStart.panY + (e.clientY - panStart.y) / scale
@@ -1351,14 +1372,35 @@ function resetState() {
 }
 
 function onKey(e) { if (e.key === 'Escape' && props.show) close() }
-onMounted(() => document.addEventListener('keydown', onKey))
+onMounted(() => {
+  document.addEventListener('keydown', onKey)
+  nextTick(() => {
+    const canvas = canvasRef.value
+    if (!canvas) return
+    const updateSize = () => {
+      canvasSize.value = { w: canvas.clientWidth, h: canvas.clientHeight }
+    }
+    updateSize()
+    canvasResizeObserver = new ResizeObserver(updateSize)
+    canvasResizeObserver.observe(canvas)
+  })
+})
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onKey)
+  if (canvasResizeObserver) {
+    canvasResizeObserver.disconnect()
+    canvasResizeObserver = null
+  }
 })
 
 watch(() => props.show, (v) => {
   if (!v) {
     resetState()
+  } else {
+    nextTick(() => {
+      const canvas = canvasRef.value
+      if (canvas) canvasSize.value = { w: canvas.clientWidth, h: canvas.clientHeight }
+    })
   }
 })
 </script>
