@@ -162,9 +162,9 @@
 import { nextTick, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { auth } from '../stores/auth'
-import { agentAsk } from '../api'
 import QRCode from 'qrcode'
 import { useExploredImageries } from '../composables/useExploredImageries'
+import { useExplorationReport } from '../composables/useExplorationReport'
 
 const router = useRouter()
 const mode = ref('login')
@@ -181,27 +181,13 @@ const pwOk = ref(false)
 
 // 诗旅手帖
 const { exploredList, exploredThemes, themeProgress, achievements, clearExplored } = useExploredImageries()
-const report = ref(loadCachedReport())
-const reportLoading = ref(false)
-const hasCachedReport = ref(!!loadCachedReport())
+const { report, loading: reportLoading, hasCached: hasCachedReport, generate, hydrate } = useExplorationReport()
 const leafCvs = ref(null)
 
-// AI report cache
-const REPORT_CACHE_KEY = 'sxz_ai_report'
-function reportHash() { return exploredList.value.map(e => e.id).sort().join(',') }
-function loadCachedReport() {
-  try {
-    const raw = localStorage.getItem(REPORT_CACHE_KEY)
-    if (!raw) return ''
-    const data = JSON.parse(raw)
-    if (data.hash === reportHash()) return data.report || ''
-  } catch { }
-  return ''
-}
-function saveCachedReport(text) {
-  try {
-    localStorage.setItem(REPORT_CACHE_KEY, JSON.stringify({ hash: reportHash(), report: text }))
-  } catch { }
+hydrate(exploredList.value)
+async function genReport() {
+  if (!exploredList.value.length) return
+  await generate(exploredList.value, exploredThemes.value)
 }
 
 // Canvas leaf rendering
@@ -307,28 +293,6 @@ function onLeafDbl(e) {
 }
 
 watch(exploredList, () => nextTick(renderLeafCanvas), { deep: true })
-
-function stripMd(text) {
-  return text.replace(/\*\*(.+?)\*\*/g, '$1').replace(/###?\s?/g, '').replace(/__/g, '').replace(/\n{3,}/g, '\n\n')
-}
-
-async function genReport() {
-  if (!exploredList.value.length) return
-  reportLoading.value = true
-  try {
-    const names = exploredList.value.map(e => e.name).join('、')
-    const themes = exploredThemes.value.join('、')
-    const prompt = `我已探索了${exploredList.value.length}个古典诗词意象：${names}。它们跨越了${exploredThemes.value.length}个文化主题族：${themes}。请基于此生成一段约200字的个性化意象探索报告。要求：纯文本，不使用任何Markdown格式（不要加粗、标题等）。语言典雅有文采，分析我的兴趣偏好和意象探索路径。例如："你已探索了X个意象，跨越了X个文化主题族。你似乎对XX族特别感兴趣——你探索了XX，它们恰好是XX场景中最经典的意象……"`
-    const resp = await agentAsk(prompt)
-    report.value = stripMd(resp.answer)
-    saveCachedReport(report.value)
-    hasCachedReport.value = true
-  } catch {
-    report.value = `你已探索了 ${exploredList.value.length} 个意象，跨越了 ${exploredThemes.value.length} 个文化主题族。这些意象承载着千年的诗情画意，每一次探索都是与古人的一次心灵对话。`
-  } finally {
-    reportLoading.value = false
-  }
-}
 
 async function generateShareCard() {
   const items = exploredList.value

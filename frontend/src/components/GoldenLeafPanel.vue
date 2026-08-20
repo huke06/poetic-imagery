@@ -92,10 +92,12 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { useExploredImageries } from '../composables/useExploredImageries'
+import { useExplorationReport } from '../composables/useExplorationReport'
 import { useSideDrag } from '../composables/useSideDrag'
 import { downloadDataUrl, downloadText, svgDataUrl, svgToPngDataUrl } from '../utils/share'
 
-const { exploredList: list, newCount, achievements, themeProgress, consumeNew } = useExploredImageries()
+const { exploredList: list, exploredThemes, newCount, achievements, themeProgress, consumeNew } = useExploredImageries()
+const { generate: generateReport } = useExplorationReport()
 const router = useRouter()
 
 const open = ref(false)
@@ -132,7 +134,8 @@ async function shareMap() {
     const explored = list.value.map((e) => ({
       name: e.name, theme: e.theme, themeColor: e.themeColor, poetryCount: e.poetryCount,
     }))
-    const resp = await axios.post('/api/concept/exploration-card', { explored, theme_count: themeChips.value.length })
+    const report = await generateReport(list.value, exploredThemes.value)
+    const resp = await axios.post('/api/concept/exploration-card', { explored, theme_count: themeChips.value.length, report })
     shareSvg.value = typeof resp.data === 'string' ? resp.data : ''
   } catch { shareSvg.value = '' }
   finally { shareBusy.value = false }

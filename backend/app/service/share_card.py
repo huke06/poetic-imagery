@@ -294,12 +294,27 @@ def render_exploration_card(explored: list, report: str = "", theme_count: int =
         names += f" …等{count}个"
 
     report_text = (report or "").replace("**", "").replace("###", "").replace("##", "").replace("__", "")[:200]
-    color = "#B5352C"
+    color = "#2B4C7E"
 
     report_lines = _wrap_verse_lines(report_text, 26)[:6]
     report_rows = ""
     for i, ln in enumerate(report_lines):
         report_rows += '<tspan x="56" dy="{dy}">{t}</tspan>'.format(dy=0 if i == 0 else 24, t=_esc(ln))
+
+    # 右下角平台 logo（缺失/无 Pillow 时回退为「诗象」文字印章）
+    logo_size = 44
+    logo_x = 720 - 56 - logo_size
+    logo_y = 380
+    logo_uri = _logo_data_uri(logo_size)
+    if logo_uri:
+        seal_svg = ('<image x="{x}" y="{y}" width="{s}" height="{s}" href="{u}" '
+                    'preserveAspectRatio="xMidYMid meet"/>'
+                    ).format(x=logo_x, y=logo_y, s=logo_size, u=logo_uri)
+    else:
+        seal_svg = (
+            '<rect x="590" y="380" width="44" height="44" rx="4" fill="#9B2C1F" opacity="0.9"/>'
+            '<text x="612" y="410" font-size="20" fill="#F5F1E8" text-anchor="middle" font-family="{fk}">诗象</text>'
+        ).format(fk=FONT_KAI)
 
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="720" height="440" viewBox="0 0 720 440">
   <rect width="720" height="440" fill="#F5F1E8"/>
@@ -320,21 +335,21 @@ def render_exploration_card(explored: list, report: str = "", theme_count: int =
    · 跨越 <tspan fill="{color}" font-weight="bold">{theme_count}</tspan> 个主题族
   </text>
 
-  <line x1="160" y1="140" x2="560" y2="140" stroke="{color}" stroke-width="1" opacity="0.4"/>
+  <line x1="160" y1="140" x2="560" y2="140" stroke="{color}" stroke-width="0.75" opacity="0.25"/>
 
-  <text x="56" y="178" font-size="15" fill="#6B6B6B" font-family="{FONT_SANS}">
+  <text x="56" y="178" font-size="15" fill="#6B6B6B" font-family="{FONT_SONG}">
     <tspan x="56" dy="0">{_esc(names)}</tspan>
   </text>
 
-  <text x="56" y="240" font-size="14" fill="#4A4A4A" font-family="{FONT_SANS}">
+  <text x="56" y="240" font-size="14" fill="#4A4A4A" font-family="{FONT_SONG}">
     <tspan x="56" dy="0" font-weight="bold" fill="{color}">AI 探索报告</tspan>
   </text>
-  <text x="56" y="260" font-size="13" fill="#2C2C2C" font-family="{FONT_SANS}">
+  <line x1="56" y1="248" x2="156" y2="248" stroke="{color}" stroke-width="3" opacity="0.55"/>
+  <text x="56" y="264" font-size="13" fill="#2C2C2C" font-family="{FONT_SONG}">
     {report_rows}
   </text>
 
-  <text x="56" y="410" font-size="12" fill="#9A9A9A" font-family="{FONT_SANS}">诗象万千 · 游心万象，一眼千年</text>
+  <text x="56" y="410" font-size="12" fill="#9A9A9A" font-family="{FONT_SONG}">诗象万千 · 游心万象，一眼千年</text>
 
-  <rect x="590" y="380" width="44" height="44" rx="4" fill="#9B2C1F" opacity="0.9"/>
-  <text x="612" y="410" font-size="20" fill="#F5F1E8" text-anchor="middle" font-family="{FONT_KAI}">诗象</text>
+  {seal_svg}
 </svg>'''
