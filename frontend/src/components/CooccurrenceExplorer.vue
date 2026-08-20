@@ -90,7 +90,7 @@
             <g v-for="(n, nIdx) in projectedGraph.projectedNodes" :key="n.id"
               :transform="`translate(${n.px},${n.py})`"
               :class="['cursor-pointer', 'node-group', { 'node-no-transition': draggingNodeId === n.id }]"
-              :style="{
+              :style="draggingNodeId === n.id ? {} : {
                 transition: 'transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease',
               }"
               @mousedown.stop="onNodeMouseDown($event, n)"
@@ -351,6 +351,12 @@ let panStart = null
 let draggingNode = null   // { id, startX, startY, offsetX, offsetY }
 const draggingNodeId = ref(null)
 const nodeOverrides = ref({})  // { nodeId: { x, y } } 拖拽后的位置覆盖
+
+// 拖拽优化：区分拖拽与点击
+const DRAG_THRESHOLD = 5  // 拖拽移动阈值（像素）
+let dragStartPos = null   // 鼠标按下时的位置 { x, y }
+let movedDuringDrag = false  // 拖拽过程中是否移动超过阈值
+let suppressClick = false  // 用于阻止拖拽后的 click 事件
 
 // ── 子图谱展开状态 ──
 const expanded = ref(false)
@@ -1178,6 +1184,11 @@ function isConnectedToSelected(n) {
 }
 
 function select(n) {
+  // 如果是拖拽后的释放，阻止点击
+  if (suppressClick) {
+    suppressClick = false
+    return
+  }
   selected.value = selected.value === n.id ? null : n.id
 }
 function clearSelection() {
@@ -1220,6 +1231,16 @@ function onCanvasMouseDown(e) {
 
 function onCanvasMouseMove(e) {
   if (!panStart && !draggingNode) return
+
+  // 检测是否超过拖拽阈值
+  if (dragStartPos && !movedDuringDrag) {
+    const dx = e.clientX - dragStartPos.x
+    const dy = e.clientY - dragStartPos.y
+    if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
+      movedDuringDrag = true
+    }
+  }
+
   const pos = clientToSvg(e.clientX, e.clientY)
 
   if (draggingNode) {
@@ -1244,23 +1265,81 @@ function onCanvasMouseMove(e) {
   }
 }
 
+// 全局鼠标事件处理（用于节点拖拽时防止鼠标移出丢失事件）
+function onWindowMouseMove(e) {
+  if (!draggingNode) return
+  // 检测是否超过拖拽阈值
+  if (dragStartPos && !movedDuringDrag) {
+    const dx = e.clientX - dragStartPos.x
+    const dy = e.clientY - dragStartPos.y
+    if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
+      movedDuringDrag = true
+    }
+  }
+  const pos = clientToSvg(e.clientX, e.clientY)
+  nodeOverrides.value[draggingNode.id] = { x: pos.x, y: pos.y }
+  if (cachedNodes) {
+    const n = cachedNodes.find(n => n.id === draggingNode.id)
+    if (n) {
+      n._bx = pos.x
+      n._by = pos.y
+      doProject()
+    }
+  }
+}
+
+function onWindowMouseUp() {
+  // 拖拽结束：如果拖拽超过阈值，则阻止点击事件
+  if (movedDuringDrag) {
+    suppressClick = true
+    // 下一帧恢复，确保 click 事件被阻止
+    requestAnimationFrame(() => {
+      suppressClick = false
+    })
+  }
+
+  // 清理全局事件监听
+  window.removeEventListener('mousemove', onWindowMouseMove)
+  window.removeEventListener('mouseup', onWindowMouseUp)
+
+  // 重置拖拽状态
+  draggingNode = null
+  draggingNodeId.value = null
+  dragStartPos = null
+}
+
 function onCanvasMouseUp() {
   panStart = null
   draggingNode = null
   draggingNodeId.value = null
+  dragStartPos = null
 }
 
 function onCanvasMouseLeave() {
-  panStart = null
-  draggingNode = null
-  draggingNodeId.value = null
+  // 不再在 mouseleave 时重置拖拽状态，由全局事件处理
+  if (!draggingNode) {
+    panStart = null
+  }
 }
 
 function onNodeMouseDown(e, n) {
   e.stopPropagation()
+  e.preventDefault()  // 阻止浏览器默认拖拽行为
   draggingNode = { id: n.id }
   draggingNodeId.value = n.id
   panStart = null
+
+  // 记录拖拽起始位置
+  dragStartPos = { x: e.clientX, y: e.clientY }
+  movedDuringDrag = false
+  suppressClick = false
+
+  // 立即禁用该节点的 transition，让拖拽跟手
+  draggingNodeId.value = n.id
+
+  // 添加全局事件监听（确保拖拽过程中鼠标移出也能继续响应）
+  window.addEventListener('mousemove', onWindowMouseMove)
+  window.addEventListener('mouseup', onWindowMouseUp)
 }
 
 // ── 子图谱展开逻辑 ──
@@ -1332,12 +1411,23 @@ function resetState() {
   zoom.value = 1
   panX.value = 0
   panY.value = 0
+
+  // 清理拖拽相关状态
+  draggingNode = null
+  dragStartPos = null
+  movedDuringDrag = false
+  suppressClick = false
+  window.removeEventListener('mousemove', onWindowMouseMove)
+  window.removeEventListener('mouseup', onWindowMouseUp)
 }
 
 function onKey(e) { if (e.key === 'Escape' && props.show) close() }
 onMounted(() => document.addEventListener('keydown', onKey))
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onKey)
+  // 清理可能残留的全局事件监听
+  window.removeEventListener('mousemove', onWindowMouseMove)
+  window.removeEventListener('mouseup', onWindowMouseUp)
 })
 
 watch(() => props.show, (v) => {
