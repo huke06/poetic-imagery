@@ -171,12 +171,12 @@
               <span v-if="n.isSubCenter" class="text-zheshi">· 已展开</span>
               <span v-if="n.isSubNode" class="text-zheshi">· 子意象</span>
             </div>
-            <p v-if="n.edge?.verse" class="verse-text text-moyan/90 mt-1.5 leading-6 text-[12px]">「{{ n.edge.verse }}」</p>
-            <p v-if="n.edge?.description" class="text-qianhui mt-1 text-[11px] leading-5">{{ n.edge.description }}</p>
             <p v-if="n.edge?.poet || n.edge?.dynasty" class="text-[10px] text-qianhui/70 mt-1">
               {{ [n.edge.dynasty, n.edge.poet].filter(Boolean).join(' · ') }}
               <span v-if="n.edge.poem_title">《{{ n.edge.poem_title }}》</span>
             </p>
+            <p v-if="n.edge?.verse" class="verse-text text-moyan/90 mt-1.5 leading-6 text-[12px] whitespace-pre-line">{{ n.edge.verse }}</p>
+            <p v-if="n.edge?.description" class="text-qianhui mt-1 text-[11px] leading-5">{{ n.edge.description }}</p>
             <button v-if="n.concept_id" class="mt-2 text-[11px] hover:underline pointer-events-auto font-semibold"
               :style="{ color: n.accentColor }"
               @click.stop="goConcept(n.concept_id)">探索该意象 →</button>
