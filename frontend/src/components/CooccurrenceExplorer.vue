@@ -357,6 +357,7 @@ const DRAG_THRESHOLD = 5  // 拖拽移动阈值（像素）
 let dragStartPos = null   // 鼠标按下时的位置 { x, y }
 let movedDuringDrag = false  // 拖拽过程中是否移动超过阈值
 let suppressClick = false  // 用于阻止拖拽后的 click 事件
+let skipRebuildAfterDrag = false  // 拖拽结束后跳过一次 rebuild
 
 // ── 子图谱展开状态 ──
 const expanded = ref(false)
@@ -565,12 +566,13 @@ function applyRepulsion(nodes, opts = {}) {
     centerY = H / 2,
     damping = 0.85,
     boundPadding = 40,
+    extraFixedIds = [],
   } = opts
 
-  const fixedIds = new Set(
-    nodes.filter((n) => n.isCenter || n.isSubCenter)
-      .map((n) => n.id)
-  )
+  const fixedIds = new Set([
+    ...nodes.filter((n) => n.isCenter || n.isSubCenter).map((n) => n.id),
+    ...extraFixedIds,
+  ])
   const parentMap = {}
   for (const n of nodes) {
     if (n.parentId) parentMap[n.id] = n.parentId
@@ -757,13 +759,22 @@ function applyRepulsion(nodes, opts = {}) {
 // ── 展开后合并的显示图谱 ──
 const displayGraph = computed(() => {
   if (!graph.value) return null
+
+  // 获取所有有拖拽覆盖的节点ID，在斥力计算中固定它们
+  const dragFixedIds = Object.keys(nodeOverrides.value)
+
   if (!expanded.value || Object.keys(expansionData.value).length === 0) {
     // 基础图谱：也应用斥力，防止节点重叠
-    const baseNodes = graph.value.nodes.map((n) => ({ ...n, z: 0 }))
+    // 使用拖拽覆盖位置作为初始位置
+    const baseNodes = graph.value.nodes.map((n) => {
+      const drag = getDragPos(n)
+      return { ...n, x: drag.x, y: drag.y, z: 0 }
+    })
     const repulsedNodes = applyRepulsion(baseNodes, {
       iterations: 30,
       minDist: 40,
       damping: 0.82,
+      extraFixedIds: dragFixedIds,
     })
     // 用斥力后的节点位置重建边
     const edgeNodesMap = {}
@@ -773,7 +784,10 @@ const displayGraph = computed(() => {
   }
 
   const base = graph.value
-  const allNodes = base.nodes.map((n) => ({ ...n, z: 0 }))
+  const allNodes = base.nodes.map((n) => {
+    const drag = getDragPos(n)
+    return { ...n, x: drag.x, y: drag.y, z: 0 }
+  })
   const allEdges = [...base.edges]
 
   // 已出现节点名称集合（先收录基础图谱所有节点，后续展开时去重）
@@ -893,6 +907,7 @@ const displayGraph = computed(() => {
     iterations: 35,
     minDist: 40,
     damping: 0.82,
+    extraFixedIds: dragFixedIds,
   })
 
   // 重新计算所有边的坐标（斥力后节点位置变了）—— 坐标在 projectedGraph 中处理
@@ -1065,7 +1080,27 @@ watch(expanded, (v) => {
 })
 
 watch(nodeOverrides, () => {
-  if (cachedNodes) {
+  if (!cachedNodes) return
+
+  if (draggingNode) {
+    // 拖拽中：直接更新位置，跳过 displayGraph 重新计算
+    for (const n of cachedNodes) {
+      const drag = getDragPos(n)
+      n._bx = drag.x
+      n._by = drag.y
+    }
+    doProject()
+  } else if (skipRebuildAfterDrag) {
+    // 拖拽刚结束：更新位置但不触发 displayGraph 重建（避免斥力回弹）
+    for (const n of cachedNodes) {
+      const drag = getDragPos(n)
+      n._bx = drag.x
+      n._by = drag.y
+    }
+    doProject()
+    skipRebuildAfterDrag = false
+  } else {
+    // 正常变更：完整重建
     rebuildProjectionBase()
   }
 })
@@ -1113,9 +1148,13 @@ function clientToSvg(clientX, clientY) {
   const scale = Math.min(scaleX, scaleY)
   const offsetX = (rect.width - W * scale) / 2
   const offsetY = (rect.height - H * scale) / 2
+  // Step 1: client → SVG viewBox coordinates
   const svgX = (clientX - rect.left - offsetX) / scale
   const svgY = (clientY - rect.top - offsetY) / scale
-  return { x: svgX, y: svgY }
+  // Step 2: SVG viewBox → inner node coordinates (undo pan/zoom)
+  const nodeX = (svgX - panX.value) / zoom.value
+  const nodeY = (svgY - panY.value) / zoom.value
+  return { x: nodeX, y: nodeY }
 }
 
 // ── 右侧面板卡片数据 ──
@@ -1241,15 +1280,16 @@ function onCanvasMouseMove(e) {
     }
   }
 
-  const pos = clientToSvg(e.clientX, e.clientY)
-
   if (draggingNode) {
-    nodeOverrides.value[draggingNode.id] = { x: pos.x, y: pos.y }
+    // 节点拖拽：使用偏移量计算位置
+    const pos = clientToSvg(e.clientX, e.clientY)
+    const newX = pos.x - draggingNode.offsetX
+    const newY = pos.y - draggingNode.offsetY
     if (cachedNodes) {
       const n = cachedNodes.find(n => n.id === draggingNode.id)
       if (n) {
-        n._bx = pos.x
-        n._by = pos.y
+        n._bx = newX
+        n._by = newY
         doProject()
       }
     }
@@ -1276,13 +1316,17 @@ function onWindowMouseMove(e) {
       movedDuringDrag = true
     }
   }
+  // 使用偏移量计算新位置，确保节点跟随鼠标抓取点
   const pos = clientToSvg(e.clientX, e.clientY)
-  nodeOverrides.value[draggingNode.id] = { x: pos.x, y: pos.y }
+  const newX = pos.x - draggingNode.offsetX
+  const newY = pos.y - draggingNode.offsetY
+
+  // 直接更新 cachedNodes 位置（不走 nodeOverrides 的 watch 路径）
   if (cachedNodes) {
     const n = cachedNodes.find(n => n.id === draggingNode.id)
     if (n) {
-      n._bx = pos.x
-      n._by = pos.y
+      n._bx = newX
+      n._by = newY
       doProject()
     }
   }
@@ -1292,10 +1336,21 @@ function onWindowMouseUp() {
   // 拖拽结束：如果拖拽超过阈值，则阻止点击事件
   if (movedDuringDrag) {
     suppressClick = true
-    // 下一帧恢复，确保 click 事件被阻止
     requestAnimationFrame(() => {
       suppressClick = false
     })
+  }
+
+  // 设置跳过标志，防止 watch(nodeOverrides) 触发 rebuildProjectionBase
+  // （rebuildProjectionBase 会重新计算 displayGraph 并应用斥力，导致节点回弹）
+  skipRebuildAfterDrag = true
+
+  // 将最终位置写入 nodeOverrides（持久化拖拽结果）
+  if (draggingNode && cachedNodes) {
+    const n = cachedNodes.find(n => n.id === draggingNode.id)
+    if (n) {
+      nodeOverrides.value[draggingNode.id] = { x: n._bx, y: n._by }
+    }
   }
 
   // 清理全局事件监听
@@ -1325,7 +1380,16 @@ function onCanvasMouseLeave() {
 function onNodeMouseDown(e, n) {
   e.stopPropagation()
   e.preventDefault()  // 阻止浏览器默认拖拽行为
-  draggingNode = { id: n.id }
+
+  // 记录鼠标相对于节点的偏移量（确保抓取点不跳）
+  const pos = clientToSvg(e.clientX, e.clientY)
+  const nodeX = n._bx !== undefined ? n._bx : (cachedNodes?.find(c => c.id === n.id)?._bx ?? n.x)
+  const nodeY = n._by !== undefined ? n._by : (cachedNodes?.find(c => c.id === n.id)?._by ?? n.y)
+  draggingNode = {
+    id: n.id,
+    offsetX: pos.x - nodeX,
+    offsetY: pos.y - nodeY,
+  }
   draggingNodeId.value = n.id
   panStart = null
 
