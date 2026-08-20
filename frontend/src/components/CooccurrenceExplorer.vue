@@ -1014,7 +1014,7 @@ watch(displayGraph, () => {
   if (props.show && expanded.value && !autoRotateRAF) {
     startAutoRotate()
   }
-})
+}, { immediate: true })
 
 watch(expanded, (v) => {
   if (v) startAutoRotate()
