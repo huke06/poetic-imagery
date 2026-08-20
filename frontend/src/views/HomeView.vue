@@ -146,7 +146,7 @@
         <div class="ai-hero rounded-2xl px-6 py-12 sm:px-12 text-center relative overflow-hidden">
           <div class="absolute -top-16 -right-16 w-64 h-64 rounded-full opacity-20" style="background: radial-gradient(circle, #F5F1E8, transparent 70%)"></div>
           <div class="absolute -bottom-20 -left-10 w-56 h-56 rounded-full opacity-10" style="background: radial-gradient(circle, #F5F1E8, transparent 70%)"></div>
-          <span class="seal !w-12 !h-12 !text-base mx-auto">问</span>
+          <img src="/lingxi-logo.png" alt="灵犀助手" class="w-12 h-12 object-contain mx-auto" />
           <h3 class="font-song text-2xl sm:text-3xl font-bold mt-5 text-xuanzhi">向灵犀助手提问</h3>
           <p class="text-sm text-xuanzhi/70 mt-3 leading-6">不懂意象？不会赏析？一键唤起灵犀，随时陪你读诗、解诗、写诗。</p>
           <div class="flex flex-wrap justify-center gap-2.5 mt-6">

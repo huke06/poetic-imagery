@@ -9,11 +9,7 @@
     <Transition name="swap">
       <button v-if="!open" class="leaf-collapsed" :class="{ 'leaf-pulse': pulse }"
         @pointerdown="onPointerDown" @click="onBtnClick" title="金叶集（可拖拽移动）">
-        <svg width="42" height="46" viewBox="0 0 44 52">
-          <path d="M22 3 C9 3 1 13 1 25 C1 30 3 35 8 39 L22 52 L36 39 C41 35 43 30 43 25 C43 13 35 3 22 3Z"
-            fill="#C89838" stroke="#8B6910" stroke-width="0.9"/>
-          <line x1="22" y1="15" x2="22" y2="33" stroke="#8B6910" stroke-width="0.7"/>
-        </svg>
+        <img src="/jinyeji-logo.png" alt="金叶集" class="w-10 h-10 object-contain" />
         <span v-if="list.length" class="leaf-badge">{{ list.length }}</span>
       </button>
     </Transition>
@@ -377,13 +373,12 @@ onBeforeUnmount(() => cancelAnimationFrame(rid))
 .leaf-collapsed {
   position: relative; width: 52px; height: 52px;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(245,241,232,0.88); backdrop-filter: blur(10px);
-  border: 1px solid rgba(180,150,100,0.3); border-radius: 14px;
-  box-shadow: 0 2px 16px rgba(100,70,20,0.1); cursor: grab; transition: box-shadow .3s, background .3s;
+  background: transparent; border: none; border-radius: 14px;
+  box-shadow: 0 4px 18px rgba(80,55,20,0.18); cursor: grab; transition: box-shadow .3s;
   user-select: none; touch-action: none;
 }
 .leaf-collapsed:active { cursor: grabbing; }
-.leaf-collapsed:hover { background: rgba(245,241,232,0.97); box-shadow: 0 6px 24px rgba(100,70,20,0.18); }
+.leaf-collapsed:hover { box-shadow: 0 6px 24px rgba(80,55,20,0.25); }
 .leaf-pulse { animation: lp .5s ease-in-out 3; }
 @keyframes lp { 0%,100%{box-shadow:0 2px 16px rgba(100,70,20,.1)} 50%{box-shadow:0 2px 28px rgba(200,152,56,.5)} }
 .leaf-badge {

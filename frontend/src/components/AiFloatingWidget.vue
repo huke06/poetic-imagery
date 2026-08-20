@@ -4,12 +4,7 @@
     <!-- Collapsed button -->
     <Transition name="swap">
       <button v-if="!open" class="ai-float-btn" @pointerdown="onPointerDown" @click="onBtnClick" title="诗象问答（可拖拽移动）">
-        <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
-          <circle cx="16" cy="14" r="8" stroke="#F5F1E8" stroke-width="2"/>
-          <path d="M10 24 C10 20 22 20 22 24" stroke="#F5F1E8" stroke-width="2" stroke-linecap="round"/>
-          <circle cx="12" cy="12" r="1.5" fill="#F5F1E8"/>
-          <circle cx="20" cy="12" r="1.5" fill="#F5F1E8"/>
-        </svg>
+        <img src="/lingxi-logo.png" alt="灵犀" class="w-8 h-8 object-contain rounded-full" />
       </button>
     </Transition>
 
@@ -186,14 +181,14 @@ onBeforeUnmount(() => window.removeEventListener('sxz-ask', onAskEvent))
 
 .ai-float-btn {
   width: 48px; height: 48px; border-radius: 50%;
-  background: #2B4C7E; border: none; cursor: grab;
-  box-shadow: 0 4px 18px rgba(43,76,126,0.35);
+  background: transparent; border: none; cursor: grab;
+  box-shadow: 0 4px 18px rgba(80,55,20,0.18);
   display: flex; align-items: center; justify-content: center;
   transition: box-shadow 0.3s;
   user-select: none; touch-action: none;
 }
 .ai-float-btn:active { cursor: grabbing; }
-.ai-float-btn:hover { box-shadow: 0 6px 24px rgba(43,76,126,0.5); }
+.ai-float-btn:hover { box-shadow: 0 6px 24px rgba(80,55,20,0.25); }
 
 .ai-float-card {
   position: absolute; bottom: 56px; right: 0;

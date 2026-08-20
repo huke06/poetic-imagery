@@ -38,7 +38,7 @@
         </div>
         <div ref="msgBox" class="flex-1 overflow-y-auto p-5 space-y-5">
           <div v-if="!msgs.length" class="h-full flex flex-col items-center justify-center text-qianhui gap-3">
-            <span class="seal !w-14 !h-14 !text-lg">问</span>
+            <img src="/lingxi-logo.png" alt="灵犀助手" class="w-14 h-14 object-contain" />
             <p class="text-sm">{{ auth.loggedIn ? '开始新的对话吧' : '登录后可保存对话' }}</p>
           </div>
           <div v-for="m in msgs" :key="m.id">
