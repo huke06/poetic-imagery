@@ -86,8 +86,8 @@
                 style="font-family:'Kaiti SC',KaiTi,serif;font-weight:700" pointer-events="none">{{ displayGraph.center.name }}</text>
             </g>
 
-            <!-- 所有节点 -->
-            <g v-for="(n, nIdx) in projectedGraph.projectedNodes" :key="n.id"
+            <!-- 所有节点（排除根节点，根节点由上面单独渲染） -->
+            <g v-for="(n, nIdx) in projectedGraph.projectedNodes.filter(n => !n.isCenter)" :key="n.id"
               :transform="`translate(${n.px},${n.py})`"
               :class="['cursor-pointer', 'node-group', { 'node-no-transition': draggingNodeId === n.id }]"
               :style="draggingNodeId === n.id ? {} : {
@@ -1088,6 +1088,10 @@ watch(nodeOverrides, () => {
       const drag = getDragPos(n)
       n._bx = drag.x
       n._by = drag.y
+      if (n.isCenter && cachedCenter) {
+        cachedCenter._bx = drag.x
+        cachedCenter._by = drag.y
+      }
     }
     doProject()
   } else if (skipRebuildAfterDrag) {
@@ -1096,6 +1100,10 @@ watch(nodeOverrides, () => {
       const drag = getDragPos(n)
       n._bx = drag.x
       n._by = drag.y
+      if (n.isCenter && cachedCenter) {
+        cachedCenter._bx = drag.x
+        cachedCenter._by = drag.y
+      }
     }
     doProject()
     skipRebuildAfterDrag = false
@@ -1290,6 +1298,11 @@ function onCanvasMouseMove(e) {
       if (n) {
         n._bx = newX
         n._by = newY
+        // 如果是根节点，同步更新 cachedCenter
+        if (n.isCenter && cachedCenter) {
+          cachedCenter._bx = newX
+          cachedCenter._by = newY
+        }
         doProject()
       }
     }
@@ -1327,6 +1340,11 @@ function onWindowMouseMove(e) {
     if (n) {
       n._bx = newX
       n._by = newY
+      // 如果是根节点，同步更新 cachedCenter
+      if (n.isCenter && cachedCenter) {
+        cachedCenter._bx = newX
+        cachedCenter._by = newY
+      }
       doProject()
     }
   }
