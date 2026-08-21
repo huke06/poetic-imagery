@@ -17,7 +17,7 @@ def artwork_list(
     subject: str = Query("", description="主题筛选"),
     keyword: str = Query("", description="名称/作者关键词"),
     featured: str = Query("", description="传任意非空值即仅返回首页精选艺术品"),
-    page: int = Query(1, ge=1), page_size: int = Query(12, ge=1, le=200),
+    page: int = Query(1, ge=1), page_size: int = Query(12, ge=1, le=300),
     db: Session = Depends(get_db),
 ):
     q = db.query(Artwork)
@@ -32,7 +32,7 @@ def artwork_list(
         q = q.filter((Artwork.name.like(like)) | (Artwork.artist.like(like)))
     total = q.count()
     if featured and featured.lower() in ("1", "true", "yes"):
-        rows = q.order_by(func.random()).limit(8).all()
+        rows = q.order_by(func.random()).limit(page_size).all()
     else:
         rows = q.order_by(Artwork.id).offset((page - 1) * page_size).limit(page_size).all()
 

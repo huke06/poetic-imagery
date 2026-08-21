@@ -67,8 +67,8 @@
           <span>诗象万千 · 古诗词意象解读智能交互平台</span>
         </div>
         <div class="text-center sm:text-right leading-5">
-          <div>数据来源：上海图书馆开放数据（诗文库 / 古代艺术品图文库）</div>
-          <div>本库意象与诗文经人工精选标注 · 仅供学习交流 · <router-link to="/admin" class="hover:text-shiqing transition-colors">管理后台</router-link></div>
+          <div>数据来源：上海图书馆开放数据（搜韵诗文库/Artlib世界艺术鉴赏库/CBDB中国历代人物传记资料库）</div>
+          <div>意象知识库经人工精选标注 · 仅供学习交流 · <router-link to="/admin" class="hover:text-shiqing transition-colors">管理后台</router-link></div>
         </div>
       </div>
     </footer>

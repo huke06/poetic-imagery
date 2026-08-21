@@ -1,6 +1,6 @@
 <template>
   <div class="flex items-center gap-3 select-none">
-    <span class="h-px w-10 bg-gradient-to-r from-transparent to-current opacity-40"></span>
+    <span class="h-px w-8 bg-gradient-to-r from-transparent to-current opacity-30"></span>
     <h2 class="section-title" :style="{ color: color || undefined }">
       <slot />
     </h2>

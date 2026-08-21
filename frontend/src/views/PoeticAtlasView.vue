@@ -1,11 +1,11 @@
 <template>
   <div class="atlas-root">
     <!-- ═══ Gallery（翻页浏览） ═══ -->
-    <section class="max-w-6xl mx-auto px-4 md:px-8 py-12">
-      <div class="text-center mb-10">
-        <div class="text-[11px] tracking-[0.3em] text-zheshi font-semibold mb-4">GALLERY · 画卷赏析</div>
-        <h2 class="font-song text-4xl font-bold tracking-[0.06em] mb-3">诗意图鉴 · 画中诗境</h2>
-        <p class="font-song text-sm text-qianhui tracking-[0.05em]">点击画中圆点 · 探寻意象之美</p>
+    <section class="max-w-6xl mx-auto px-4 md:px-8 pt-6 pb-10">
+      <div class="text-center mb-6">
+        <div class="text-[11px] tracking-[0.3em] text-zheshi font-semibold mb-3 reveal-up" style="--d:0ms">GALLERY · 画卷赏析</div>
+        <h2 class="font-song text-3xl md:text-4xl font-bold tracking-[0.06em] mb-2 reveal-up" style="--d:60ms">诗意图鉴 · 画中诗境</h2>
+        <p class="font-song text-sm text-qianhui tracking-[0.05em] reveal-up" style="--d:120ms">点击画中圆点 · 探寻意象之美</p>
       </div>
 
       <div v-if="loading" class="py-24 text-center text-qianhui">加载中…</div>
@@ -14,27 +14,34 @@
       </div>
 
       <article v-else-if="currentPainting">
-        <div class="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-8 lg:gap-12">
-          <!-- Left: meta -->
-          <div class="flex lg:flex-col items-center lg:items-start gap-4 lg:gap-6">
-            <div class="w-16 h-16 flex items-center justify-center bg-zheshi text-xuanzhi font-kai font-bold text-3xl rounded-sm shadow-md shrink-0">
-              {{ cnNum(page) }}
+        <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,7fr)] gap-8 lg:gap-14">
+          <!-- Left: 作品信息 -->
+          <div class="reveal-up" style="--d:180ms">
+            <div class="folio-no">
+              <span class="folio-no__num">{{ String(page + 1).padStart(2, '0') }}</span>
+              <span class="folio-no__meta">
+                <span class="folio-no__kicker">NO.</span>
+                <span class="folio-no__vol">卷 {{ cnNum(page) }}</span>
+              </span>
             </div>
-            <div>
-              <h3 class="font-song font-bold text-2xl md:text-3xl tracking-[0.08em]">{{ currentPainting.title }}</h3>
-              <p class="font-serif text-sm text-qianhui italic tracking-[0.05em] mt-1">{{ currentPainting.en }}</p>
+            <h3 class="font-song font-bold text-2xl md:text-3xl tracking-[0.1em] mt-6">{{ currentPainting.title }}</h3>
+            <p class="font-serif font-light italic text-xs md:text-sm text-qianhui/80 tracking-[0.05em] mt-2">{{ currentPainting.en }}</p>
+            <div class="hairline mt-4"></div>
+            <div class="mt-5">
+              <div class="info-kicker">画中意象</div>
+              <p class="font-song text-sm text-moyan leading-7 mt-2">
+                <template v-for="(label, i) in imageryLabels" :key="label">
+                  <span v-if="i > 0" class="imagery-sep"> · </span>
+                  <router-link v-if="imageryConceptId(label)" :to="`/concept/${imageryConceptId(label)}`" class="imagery-link">{{ label }}</router-link>
+                  <button v-else class="imagery-link" @click="openModal(page, label)">{{ label }}</button>
+                </template>
+              </p>
             </div>
-            <div class="hidden lg:flex justify-between items-center w-full mt-auto pt-6 border-t border-shiqing/10 text-[11px] tracking-[0.15em] text-qianhui">
-              <span>NO. {{ String(page + 1).padStart(2, '0') }} · 卷{{ cnNum(page) }}</span>
-              <strong class="text-zheshi text-lg font-semibold">
-                {{ Object.keys(currentPainting.imageries).length }}
-                <span class="text-[11px] font-normal tracking-[0.2em] text-qianhui">意象</span>
-              </strong>
-            </div>
+            <p class="info-count mt-6">此卷 · {{ Object.keys(currentPainting.imageries).length }} 个意象</p>
           </div>
 
-          <!-- Right: image frame -->
-          <div>
+          <!-- Right: 画作 -->
+          <div class="reveal-up" style="--d:300ms">
             <div class="image-frame" @dblclick="fullscreenPi = page">
               <img :src="currentPainting.src" :alt="currentPainting.title" :key="page"
                 class="w-full h-full object-cover block" />
@@ -45,25 +52,22 @@
                 <span class="dot__pulse"></span><span class="dot__ring-outer"></span><span class="dot__core"></span><span class="dot__label">{{ dot.label }}</span>
               </button>
             </div>
-            <div class="flex flex-wrap gap-2.5 pt-3">
-              <span v-for="tag in Object.keys(currentPainting.imageries)" :key="tag" class="tag-pill">{{ tag }}</span>
-            </div>
           </div>
         </div>
 
         <!-- 翻页控制 -->
-        <div class="flex items-center justify-center gap-3 mt-10 flex-wrap">
-          <button class="btn-outline !py-1.5 !px-4 !text-xs" :disabled="page === 0" @click="goPage(page - 1)">← 上一卷</button>
+        <div class="flex items-center justify-center gap-3 mt-6 flex-wrap">
+          <button class="atlas-pager-btn" :disabled="page === 0" @click="goPage(page - 1)">← 上一卷</button>
           <div class="flex items-center gap-2 text-sm text-qianhui">
-            <span>第</span>
+            <span class="font-song">第</span>
             <input type="number" min="1" :max="paintings.length" :value="page + 1" @change="onJumpInput"
-              class="w-16 px-2 py-1.5 text-center rounded border border-zheshi/40 text-moyan focus:outline-none focus:border-zheshi" />
-            <span>/ {{ paintings.length }} 卷</span>
+              class="atlas-page-input" />
+            <span class="font-song">/ {{ paintings.length }} 卷</span>
           </div>
-          <button class="btn-outline !py-1.5 !px-4 !text-xs" :disabled="paintings.length < 2" @click="randomScroll">随机一卷</button>
-          <button class="btn-outline !py-1.5 !px-4 !text-xs" :disabled="page === paintings.length - 1" @click="goPage(page + 1)">下一卷 →</button>
+          <button class="atlas-pager-btn" :disabled="paintings.length < 2" @click="randomScroll">随机一卷</button>
+          <button class="atlas-pager-btn" :disabled="page === paintings.length - 1" @click="goPage(page + 1)">下一卷 →</button>
         </div>
-        <p class="text-center text-xs text-qianhui mt-3 tracking-widest">
+        <p class="text-center text-xs text-qianhui mt-3 tracking-widest font-song">
           共 {{ paintings.length }} 卷 · {{ totalImagery }} 个意象 · 可用 ←/→ 键翻页
         </p>
       </article>
@@ -106,7 +110,7 @@
           @click="fullscreenPi = null">×</button>
         <span class="fixed bottom-4 left-1/2 -translate-x-1/2 text-white/30 text-xs z-[260] pointer-events-none">双击或 Esc 退出</span>
         <template v-for="(painting, pi) in paintings" :key="'fs-' + pi">
-          <div v-if="fullscreenPi === pi" class="image-frame" style="width:95vw;height:85vh;box-shadow:none;background:transparent;">
+          <div v-if="fullscreenPi === pi" class="image-frame" style="width:95vw;height:85vh;box-shadow:none;background:transparent;border:none;border-radius:0;">
             <img :src="painting.src" :alt="painting.title" class="w-full h-full object-cover block" />
             <button v-for="dot in painting.dots" :key="dot.label"
               class="dot" :style="{ left: dot.left, top: dot.top }" @click.stop="openModal(pi, dot.label)">
@@ -196,6 +200,11 @@ const fullscreenPi = ref(null)
 
 const currentPainting = computed(() => paintings.value[page.value] || null)
 const totalImagery = computed(() => paintings.value.reduce((s, p) => s + Object.keys(p.imageries).length, 0))
+const imageryLabels = computed(() => Object.keys(currentPainting.value?.imageries || {}))
+function imageryConceptId(label) {
+  const data = currentPainting.value?.imageries?.[label]
+  return data?.conceptId ?? conceptMap.value[label]?.id ?? null
+}
 
 function goPage(i) {
   if (i < 0 || i >= paintings.value.length) return
@@ -288,14 +297,31 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.atlas-root { --accent: #9B4423; --accent-deep: #6E2D18; font-family: inherit; color: #2C2C2C; }
-
-.image-frame {
-  position: relative; width: 100%; height: 560px; overflow: hidden; background: #F2EAD6;
-  border-radius: 2px; box-shadow: 0 1px 3px rgba(26,20,16,0.06), 0 8px 24px rgba(26,20,16,0.08);
+.atlas-root {
+  --accent: #9B4423;
+  --accent-soft: rgba(155, 68, 35, 0.40);
+  --paper: #FBF8F1;
+  --hairline: #E8E1D3;
+  --ink: #2C2C2C;
+  --ink-soft: #6B6B6B;
+  font-family: inherit; color: var(--ink);
 }
-.image-overlay { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0) 60%, rgba(26,20,16,0.3) 100%); pointer-events: none; }
 
+/* ── 米白装裱画框：以 border 作内衬（不偏移圆点百分比定位） ── */
+.image-frame {
+  position: relative; width: 100%; height: 500px; overflow: hidden;
+  background: #F2EAD6;
+  border: 12px solid var(--paper);
+  border-radius: 3px;
+  box-shadow:
+    0 0 0 1px var(--hairline),
+    0 2px 6px rgba(26, 20, 16, 0.05),
+    0 12px 28px rgba(26, 20, 16, 0.06);
+}
+.image-frame img { border-radius: 1px; }
+.image-overlay { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(26,20,16,0) 72%, rgba(26,20,16,0.14) 100%); pointer-events: none; }
+
+/* ── 意象定位点（圆点） ── */
 .dot { position: absolute; z-index: 5; transform: translate(-50%, -50%); cursor: pointer; -webkit-tap-highlight-color: transparent; background: none; border: none; padding: 0; font: inherit; color: inherit; }
 .dot__ring-outer { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--accent); background: rgba(250,245,235,0.15); backdrop-filter: blur(2px); opacity: 0.75; transition: all 0.3s; }
 .dot__core { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px rgba(250,245,235,0.6); transition: all 0.3s; }
@@ -309,12 +335,64 @@ onBeforeUnmount(() => {
 .dot:focus-visible .dot__ring-outer { outline: 2px solid var(--accent); outline-offset: 4px; }
 @keyframes dot-pulse { 0% { opacity: 0.6; transform: translate(-50%, -50%) scale(0.6); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.4); } }
 
-.tag-pill { font-family: 'Noto Serif SC','Kaiti SC',serif; font-size: 13px; padding: 5px 12px; border: 1px solid #E0D8C8; border-radius: 99px; color: #2A2520; background: #FAF5EB; transition: all 0.2s; cursor: default; }
-.tag-pill:hover { border-color: var(--accent); color: var(--accent); background: rgba(155,68,35,0.04); }
+/* ── 左侧信息区 ── */
+.folio-no {
+  display: inline-flex; align-items: center; gap: 12px;
+  padding: 6px 14px; border: 1px solid rgba(155, 68, 35, 0.30);
+  background: rgba(251, 248, 241, 0.55); border-radius: 2px;
+}
+.folio-no__num { font-family: 'Noto Serif SC', serif; font-size: 30px; line-height: 1; color: var(--accent); font-weight: 600; letter-spacing: 0.02em; }
+.folio-no__meta { display: flex; flex-direction: column; gap: 3px; padding-left: 12px; border-left: 1px solid rgba(155, 68, 35, 0.18); }
+.folio-no__kicker { font-family: 'Georgia', 'Times New Roman', serif; font-size: 9px; letter-spacing: 0.24em; color: var(--accent); opacity: 0.8; }
+.folio-no__vol { font-family: 'Noto Serif SC', 'Kaiti SC', serif; font-size: 12px; letter-spacing: 0.15em; color: var(--ink-soft); }
+
+.hairline { width: 2rem; height: 1px; background: rgba(155, 68, 35, 0.30); }
+.info-kicker {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: 'Noto Serif SC', 'Kaiti SC', serif; font-size: 12px; letter-spacing: 0.24em; color: var(--ink);
+}
+.info-kicker::before {
+  content: ''; flex: none; width: 8px; height: 8px;
+  background: var(--accent); border-radius: 1px;
+  box-shadow: 0 0 0 1px rgba(155, 68, 35, 0.22);
+}
+.info-count { font-family: 'Noto Serif SC', 'Kaiti SC', serif; font-size: 11px; letter-spacing: 0.2em; color: var(--ink-soft); }
+.imagery-sep { color: rgba(155, 68, 35, 0.6); }
+.imagery-link { background: none; border: none; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: none; transition: color 0.2s ease; }
+.imagery-link:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+
+/* ── 翻页按钮 ── */
+.atlas-pager-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0.5rem 1.15rem;
+  font-family: 'Noto Serif SC', 'Kaiti SC', serif; font-size: 13px; letter-spacing: 0.15em;
+  color: var(--accent); background: rgba(251, 248, 241, 0.55);
+  border: 1px solid rgba(155, 68, 35, 0.35); border-radius: 2px;
+  transition: all 0.25s ease; cursor: pointer;
+}
+.atlas-pager-btn:hover:not(:disabled) { background: var(--accent); color: #F5F1E8; border-color: var(--accent); box-shadow: 0 4px 12px rgba(155, 68, 35, 0.22); }
+.atlas-pager-btn:active:not(:disabled) { transform: scale(0.97); }
+.atlas-pager-btn:disabled { color: #B8B2A6; border-color: rgba(155, 68, 35, 0.15); background: transparent; cursor: not-allowed; }
+
+.atlas-page-input {
+  width: 3.5rem; padding: 0.4rem 0.5rem; text-align: center;
+  font-family: 'Noto Serif SC', serif; font-size: 13px; color: var(--ink);
+  background: rgba(251, 248, 241, 0.6); border: 1px solid rgba(155, 68, 35, 0.30); border-radius: 2px;
+}
+.atlas-page-input:focus { outline: none; border-color: var(--accent); }
+
+/* ── 展卷式入场 ── */
+.reveal-up { opacity: 0; animation: reveal-up 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: var(--d, 0ms); }
+@keyframes reveal-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 
 @keyframes modal-in { from { opacity: 0; transform: translateY(20px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .animate-modal-in { animation: modal-in 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
 
-@media (max-width: 768px) { .image-frame { height: 340px; } .dot__label { display: none; } }
-@media (max-width: 1024px) { .image-frame { height: 480px; } }
+@media (max-width: 1024px) { .image-frame { height: 460px; } }
+@media (max-width: 768px) { .image-frame { height: 340px; border-width: 8px; } .dot__label { display: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-up, .dot__pulse { animation: none !important; }
+  .reveal-up { opacity: 1 !important; }
+}
 </style>

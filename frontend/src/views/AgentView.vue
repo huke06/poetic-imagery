@@ -14,7 +14,7 @@
           <router-link to="/auth" class="text-shiqing hover:underline">登录</router-link>&nbsp;后可以保存对话记录
         </div>
         <div v-else-if="!convs.length" class="flex-1 flex items-center justify-center text-xs text-qianhui">
-          暂无对话，点击「新对话」开始
+          暂无对话，点击“新对话”开始
         </div>
         <div v-else class="flex-1 overflow-y-auto space-y-1">
           <div v-for="c in convs" :key="c.id" class="flex items-center gap-2 px-2 py-1.5 rounded text-sm cursor-pointer transition-colors"
@@ -208,7 +208,7 @@ async function sendAsk(q) {
 
 async function sendCompose() {
   if (!selectedConcepts.value.length || sending.value) return
-  const desc = `「${selectedConcepts.value.join('、')}」${style.value}${theme.value ? '（' + theme.value + '）' : ''}`
+  const desc = `“${selectedConcepts.value.join('、')}”${style.value}${theme.value ? '（' + theme.value + '）' : ''}`
   msgs.value.push({ id: Date.now(), role: 'user', text: desc })
   sending.value = true
   await scrollBottom()

@@ -37,7 +37,7 @@ JSON_TEMPLATE_FALLBACK = json.dumps({
                   "rels": [{"clause": "含意象的诗句", "emotion": "情感标签之一", "is_classic": 1, "weight": 3}]}],
     "couplets": [{"word_a": "对仗词甲", "word_b": "对仗词乙", "verse": "例句", "source": "作者《篇目》"}],
     "artworks": [{"name": "画名", "artist": "作者", "dynasty": "宋", "material": "绢本设色", "size": "",
-                  "subject_names": "中国绘画;山水", "description": "简介", "relation_desc": "诗画关联阐释", "weight": 2}],
+                  "subject_names": "中国绘画;山水", "description": "简介", "relation_desc": "诗画关联阐释", "weight": 2, "is_featured": 0}],
     "relations": [{"to": "月", "relation_type": "共现", "description": "关系说明"}],
 }, ensure_ascii=False, indent=2)
 
@@ -58,8 +58,8 @@ CSV_COOCCURRENCE_FALLBACK = """word,con_word,to,cooccurrence_type,npmi,diaphanei
 玉,,金,句内,0.65,0.85,金风玉露一相逢，便胜却人间无数。,金玉对举为唐诗经典修辞
 """
 
-CSV_ARTWORKS_FALLBACK = """name,artist,dynasty_period,material,size,subject_names,image_url,description,concepts,relation_desc
-对月图,马远,宋代·南宋,绢本设色,23.5x24.6cm,中国绘画;山水,,月下独酌，水天一色，意境空灵,月,画中孤月高悬，与诗词「明月出天山」之境相通
+CSV_ARTWORKS_FALLBACK = """name,artist,dynasty_period,material,size,subject_names,image_url,description,concepts,relation_desc,is_featured
+对月图,马远,宋代·南宋,绢本设色,23.5x24.6cm,中国绘画;山水,,月下独酌，水天一色，意境空灵,月,画中孤月高悬，与诗词「明月出天山」之境相通,1
 """
 
 CSV_DYNASTY_FALLBACK = """word,dynasty,count

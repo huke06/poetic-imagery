@@ -24,9 +24,9 @@
       <!-- ② 意象分类（辅助信息：细边框小签，随意象主题色） -->
       <CategoryTag :main="concept.category_main" :sub="concept.category_sub" :theme-color="concept.theme_color" />
       <!-- ③ 代表名句（单行完整显示，字号随长度自适应收缩；mt-5 形成批注区断点） -->
-      <p ref="verseEl"
+      <p v-if="concept.classic_clause" ref="verseEl"
         class="verse w-full max-w-full whitespace-nowrap overflow-hidden font-song text-[13px] font-medium text-moyan/80 tracking-[0.08em] leading-relaxed mt-5">
-        {{ concept.classic_clause || '——' }}
+        {{ concept.classic_clause }}
       </p>
       <!-- ④ 情感标签（低饱和辅助信息，小而淡） -->
       <div class="flex flex-wrap justify-center gap-2.5 mt-4">

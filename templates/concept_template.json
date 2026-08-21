@@ -74,6 +74,7 @@
       "description": "作品简介",
       "relation_desc": "诗画关联阐释（这幅画与意象的关系）",
       "weight": 2,
+      "is_featured": 0,
       "svg_theme": "占位图主题：月/夕阳/青绿（可省略，自动判断）",
       "image_url": "（可省略，省略时自动生成水墨占位图）"
     }

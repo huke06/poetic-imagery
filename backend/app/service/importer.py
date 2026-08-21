@@ -845,6 +845,7 @@ def parse_csv(text: str) -> tuple[str, list[dict] | None, list[str]]:
                 "description": _unescape_newlines(_col(row, "description")),
                 "concepts": _col(row, "concepts", "concept_names", "concept"),
                 "relation_desc": _unescape_newlines(_col(row, "relation_desc")),
+                "is_featured": _col(row, "is_featured", "is_feature", "featured", "是否精选", "精选"),
             })
         return "artworks", rows, errors
 

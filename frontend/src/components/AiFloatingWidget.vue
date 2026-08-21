@@ -78,7 +78,7 @@ const bodyRef = ref(null)
 const history = ref([])        // 多轮对话历史（传给后端解析指代）
 const suggestions = ref([])    // 后端返回的追问建议
 const starterQuestions = [
-  '「月」在古诗里有哪些含义？',
+  '“月”在古诗里有哪些含义？',
   '夕阳为什么总与离愁相伴？',
   '同时写月和夕阳的诗词有哪些？',
 ]

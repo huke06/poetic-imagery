@@ -163,6 +163,10 @@
           </div>
         </div>
       </div>
+      <div class="artwork-hint">
+        <svg class="artwork-hint__arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>
+        <span class="font-kai text-xs tracking-[0.3em]">滑动鼠标查看更多</span>
+      </div>
     </section>
 
     <!-- ═══ 5. 用法谱系（词云 + AI 总结） ═══ -->
@@ -1048,6 +1052,24 @@ onBeforeRouteLeave((to) => {
   to   { opacity: 1; transform: translateY(0); }
 }
 .artwork-card.artwork-enter { animation: artwork-rise 0.5s ease-out both; }
+
+/* 诗画相映滑动提示（随意象主题色 --tc） */
+.artwork-hint {
+  display: flex; align-items: center; justify-content: center;
+  gap: 8px; margin-top: 4px;
+  color: var(--tc);
+  opacity: 0.55;
+  user-select: none; pointer-events: none;
+}
+.artwork-hint__arrow { width: 15px; height: 15px; animation: artwork-hint-drift 1.6s ease-in-out infinite; }
+@keyframes artwork-hint-drift {
+  0% { opacity: 0; transform: translateX(-6px); }
+  40% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(6px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .artwork-hint__arrow { animation: none; }
+}
 
 /* 展开详情：柔和暖暗遮罩 + 展签卡 */
 .artwork-overlay {

@@ -260,8 +260,8 @@ def concept_list(
             continue
         classic = (
             db.query(ConceptPoetryRel)
-            .filter(ConceptPoetryRel.concept_id == c.id, ConceptPoetryRel.weight >= 2)
-            .order_by(ConceptPoetryRel.weight.desc()).first()
+            .filter(ConceptPoetryRel.concept_id == c.id, ConceptPoetryRel.weight >= 3)
+            .order_by(ConceptPoetryRel.weight.desc(), ConceptPoetryRel.id.desc()).first()
         )
         art = (
             db.query(Artwork.image_url, Artwork.thumb_url)
@@ -893,8 +893,8 @@ def concept_share_card(concept_id: int, db: Session = Depends(get_db)):
     classic = (
         db.query(ConceptPoetryRel, Poetry)
         .join(Poetry, ConceptPoetryRel.poetry_id == Poetry.id)
-        .filter(ConceptPoetryRel.concept_id == c.id, ConceptPoetryRel.is_classic == 1)
-        .order_by(ConceptPoetryRel.weight.desc()).first()
+        .filter(ConceptPoetryRel.concept_id == c.id, ConceptPoetryRel.weight >= 3)
+        .order_by(ConceptPoetryRel.weight.desc(), ConceptPoetryRel.id.desc()).first()
     )
     poetry_count = db.query(func.count(func.distinct(ConceptPoetryRel.poetry_id))).filter_by(concept_id=c.id).scalar() or 0
     artwork_count = db.query(ConceptArtworkRel).filter_by(concept_id=c.id).count()

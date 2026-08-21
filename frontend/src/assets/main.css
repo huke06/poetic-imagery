@@ -39,21 +39,13 @@ body {
            hover:bg-shiqing hover:text-white active:scale-[0.98] transition-all text-sm tracking-widest;
   }
   .section-title {
-    @apply font-song text-2xl font-semibold text-moyan flex items-center gap-3;
+    @apply font-song text-2xl md:text-3xl font-semibold text-moyan flex items-center gap-3;
   }
 }
 
 /* 诗句排版 */
 .verse-text {
   font-family: 'Kaiti SC', STKaiti, KaiTi, 'Noto Serif SC', serif;
-}
-
-/* 云纹分隔线 */
-.ink-divider {
-  height: 22px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='22' viewBox='0 0 120 22'%3E%3Cpath d='M2 11 Q16 2 30 11 T58 11 T86 11 T118 11' fill='none' stroke='%232B4C7E' stroke-opacity='0.25' stroke-width='1'/%3E%3C/svg%3E");
-  background-repeat: repeat-x;
-  background-position: center;
 }
 
 /* 页面淡入 */
@@ -101,11 +93,11 @@ body {
   position: absolute;
   left: 0;
   bottom: 0;
-  width: 2.2em;
-  height: 3px;
+  width: 2em;
+  height: 2px;
   border-radius: 2px;
   background: currentColor;
-  opacity: 0.55;
+  opacity: 0.5;
 }
 
 /* 纸张质感 */
