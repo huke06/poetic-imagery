@@ -1,47 +1,56 @@
 <!--
-  共现知识图谱 · 缩略卡（与全屏探索器一致版）
-  采用与 CooccurrenceExplorer 相同的分层径向布局：中心意象 + 桥接词内圈 + 子节点外圈，
-  并应用斥力机制防止节点重叠，根→桥接词使用弧线连接。
+  共现知识图谱 · 缩略卡（自适应布局版）
+  采用与 CooccurrenceExplorer 相同的分层径向布局，支持自适应缩放填满容器。
 -->
 <template>
-  <div class="cooc-mini" :style="{ '--accent': themeColor }">
-    <svg v-if="graph" :viewBox="`0 0 ${W} ${H}`" class="w-full h-full" preserveAspectRatio="none">
+  <div class="cooc-mini" :style="{ '--accent': themeColor }" ref="containerRef">
+    <svg
+      v-if="graph"
+      ref="svgRef"
+      :viewBox="`0 0 ${viewW} ${viewH}`"
+      class="w-full h-full"
+      preserveAspectRatio="none"
+      @wheel.prevent="onWheel"
+    >
       <defs>
         <radialGradient :id="'miniGlow' + uid" cx="50%" cy="50%" r="50%">
           <stop offset="0%" :stop-color="themeColor" stop-opacity="0.16" />
           <stop offset="100%" :stop-color="themeColor" stop-opacity="0" />
         </radialGradient>
       </defs>
-      <rect :width="W" :height="H" rx="10" fill="#101a2b" />
-      <rect :width="W" :height="H" rx="10" fill="url(#miniGlow)" />
+      <rect :width="viewW" :height="viewH" rx="10" fill="#101a2b" />
+      <rect :width="viewW" :height="viewH" rx="10" fill="url(#miniGlow)" />
 
-      <!-- 连线 -->
-      <g>
-        <path v-for="e in graph.edges" :key="'e' + e.target"
-          :d="e.pathD"
-          fill="none"
-          :stroke="e.isContain ? '#9aa0aa' : themeColor"
-          :stroke-width="e.isContain ? 1 : e.width"
-          :stroke-opacity="e.isContain ? 0.5 : e.opacity"
-          :stroke-dasharray="e.dash" stroke-linecap="round" />
-      </g>
+      <!-- 自适应变换组：根据节点边界框自动缩放和居中 -->
+      <g :transform="fitTransform">
+        <!-- 连线 -->
+        <g>
+          <path v-for="e in graph.edges" :key="'e' + e.target"
+            :d="e.pathD"
+            fill="none"
+            :stroke="e.isContain ? '#9aa0aa' : themeColor"
+            :stroke-width="e.isContain ? 1 : e.width"
+            :stroke-opacity="e.isContain ? 0.5 : e.opacity"
+            :stroke-dasharray="e.dash" stroke-linecap="round" />
+        </g>
 
-      <!-- 中心节点 -->
-      <g :transform="`translate(${graph.centerX},${graph.centerY})`">
-        <circle :r="graph.centerR" :fill="themeColor" stroke="#F5F1E8" stroke-width="2" />
-        <text text-anchor="middle" dominant-baseline="middle" fill="#F5F1E8" :font-size="graph.centerFont"
-          style="font-family:'Kaiti SC',KaiTi,serif;font-weight:700" pointer-events="none">{{ graph.centerName }}</text>
-      </g>
+        <!-- 中心节点 -->
+        <g :transform="`translate(${graph.centerX},${graph.centerY})`">
+          <circle :r="graph.centerR" :fill="themeColor" stroke="#F5F1E8" stroke-width="2" />
+          <text text-anchor="middle" dominant-baseline="middle" fill="#F5F1E8" :font-size="graph.centerFont"
+            style="font-family:'Kaiti SC',KaiTi,serif;font-weight:700" pointer-events="none">{{ graph.centerName }}</text>
+        </g>
 
-      <!-- 所有节点 -->
-      <g v-for="n in graph.nodes" :key="n.id" :transform="`translate(${n.x},${n.y})`" class="cursor-pointer"
-        @click="clickNode(n)" @mouseenter="hover = n.id" @mouseleave="hover = null">
-        <circle :r="n.r + 3" :fill="n.color" opacity="0.15" />
-        <circle :r="n.r" :fill="n.color"
-          :stroke="active(n) ? '#F5F1E8' : 'rgba(245,241,232,0.5)'"
-          :stroke-width="active(n) ? 2.5 : 1.2" />
-        <text text-anchor="middle" dominant-baseline="middle" fill="#F5F1E8" :font-size="n.font"
-          style="font-family:'Kaiti SC',KaiTi,serif" pointer-events="none">{{ n.name }}</text>
+        <!-- 所有节点 -->
+        <g v-for="n in graph.nodes" :key="n.id" :transform="`translate(${n.x},${n.y})`" class="cursor-pointer"
+          @click="clickNode(n)" @mouseenter="hover = n.id" @mouseleave="hover = null">
+          <circle :r="n.r + 3" :fill="n.color" opacity="0.15" />
+          <circle :r="n.r" :fill="n.color"
+            :stroke="active(n) ? '#F5F1E8' : 'rgba(245,241,232,0.5)'"
+            :stroke-width="active(n) ? 2.5 : 1.2" />
+          <text text-anchor="middle" dominant-baseline="middle" fill="#F5F1E8" :font-size="n.font"
+            style="font-family:'Kaiti SC',KaiTi,serif" pointer-events="none">{{ n.name }}</text>
+        </g>
       </g>
     </svg>
 
@@ -72,7 +81,7 @@
 </style>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 
 const props = defineProps({
@@ -81,8 +90,18 @@ const props = defineProps({
 })
 const router = useRouter()
 const hover = ref(null)
-const W = 560, H = 300
+const containerRef = ref(null)
+const svgRef = ref(null)
+
+// 动态画布尺寸（根据容器实际大小自适应）
+const viewW = ref(560)
+const viewH = ref(300)
 const uid = Math.floor(Math.random() * 1e6)
+
+// 自适应缩放状态
+const customZoom = ref(1)  // 用户通过滚轮调整的额外缩放
+const MIN_CUSTOM_ZOOM = 0.5
+const MAX_CUSTOM_ZOOM = 3
 
 function typeLabel(t) { return t === '句内' ? '句内共现' : t === '跨句' ? '跨句共现' : '全诗共现' }
 function dashOf(t) { return t === '句内' ? '' : t === '跨句' ? '7 5' : '2 5' }
@@ -98,10 +117,8 @@ function applyRepulsion(nodes, opts = {}) {
     iterations = 20,
     minDist = 24,
     damping = 0.82,
-    bounds = { minX: 0, maxX: W, minY: 0, maxY: H, padding: 15 },
+    bounds = { minX: 0, maxX: viewW.value, minY: 0, maxY: viewH.value, padding: 15 },
   } = opts
-
-  const fixedIds = new Set(nodes.filter((n) => n.isCenter).map((n) => n.id))
 
   const pos = {}
   const vel = {}
@@ -110,65 +127,55 @@ function applyRepulsion(nodes, opts = {}) {
     vel[n.id] = { x: 0, y: 0 }
   }
 
-  const radii = {}
-  for (const n of nodes) {
-    radii[n.id] = (n.r || 10) + minDist / 2
-  }
+  const minD2 = minDist * minDist
+  const padding = bounds.padding
 
   for (let iter = 0; iter < iterations; iter++) {
-    const forces = {}
-    for (const n of nodes) {
-      forces[n.id] = { x: 0, y: 0 }
-    }
-
     for (let i = 0; i < nodes.length; i++) {
       for (let j = i + 1; j < nodes.length; j++) {
         const a = nodes[i], b = nodes[j]
+        if (a.isCenter || a.isBridge) continue
+        if (b.isCenter || b.isBridge) continue
+
         const dx = pos[a.id].x - pos[b.id].x
         const dy = pos[a.id].y - pos[b.id].y
-        const dist = Math.hypot(dx, dy) || 0.1
-        const minD = radii[a.id] + radii[b.id]
-
-        if (dist < minD) {
-          const overlap = (minD - dist) / dist
-          const fx = dx * overlap
-          const fy = dy * overlap
-          forces[a.id].x += fx
-          forces[a.id].y += fy
-          forces[b.id].x -= fx
-          forces[b.id].y -= fy
+        const d2 = dx * dx + dy * dy
+        if (d2 < minD2 && d2 > 0.001) {
+          const d = Math.sqrt(d2)
+          const force = (minDist - d) / d * 0.5
+          const fx = dx * force
+          const fy = dy * force
+          vel[a.id].x += fx
+          vel[a.id].y += fy
+          vel[b.id].x -= fx
+          vel[b.id].y -= fy
         }
       }
     }
 
     for (const n of nodes) {
-      if (fixedIds.has(n.id)) continue
-      vel[n.id].x = (vel[n.id].x + forces[n.id].x) * damping
-      vel[n.id].y = (vel[n.id].y + forces[n.id].y) * damping
+      if (n.isCenter || n.isBridge) continue
+
+      vel[n.id].x *= damping
+      vel[n.id].y *= damping
+
       pos[n.id].x += vel[n.id].x
       pos[n.id].y += vel[n.id].y
 
-      // 边界约束：确保节点不超出画布
-      const r = n.r || 10
-      const minX = bounds.minX + bounds.padding + r
-      const maxX = bounds.maxX - bounds.padding - r
-      const minY = bounds.minY + bounds.padding + r
-      const maxY = bounds.maxY - bounds.padding - r
-
-      if (pos[n.id].x < minX) {
-        pos[n.id].x = minX
+      if (pos[n.id].x < bounds.minX + padding) {
+        pos[n.id].x = bounds.minX + padding
         vel[n.id].x *= -0.5
       }
-      if (pos[n.id].x > maxX) {
-        pos[n.id].x = maxX
+      if (pos[n.id].x > bounds.maxX - padding) {
+        pos[n.id].x = bounds.maxX - padding
         vel[n.id].x *= -0.5
       }
-      if (pos[n.id].y < minY) {
-        pos[n.id].y = minY
+      if (pos[n.id].y < bounds.minY + padding) {
+        pos[n.id].y = bounds.minY + padding
         vel[n.id].y *= -0.5
       }
-      if (pos[n.id].y > maxY) {
-        pos[n.id].y = maxY
+      if (pos[n.id].y > bounds.maxY - padding) {
+        pos[n.id].y = bounds.maxY - padding
         vel[n.id].y *= -0.5
       }
     }
@@ -214,23 +221,22 @@ const graph = computed(() => {
 
   const directTargets = directEdges.map((e) => e.target)
 
-  const cx = W / 2, cy = H / 2
-  const padding = 20
+  const cx = viewW.value / 2, cy = viewH.value / 2
+  const padding = 25
 
   // 计算总节点数以动态调整半径
   const totalNodes = containEdges.length + bridgeEdges.length + directEdges.length + 1
 
-  // 动态计算半径，确保所有节点都在画布内
-  // 画布可用空间考虑中心节点(22) + 外圈节点(最大16) + padding
-  const maxRadiusX = (W / 2) - padding - 22 - 16  // 中心 + 桥接词半径 + 子节点半径
-  const maxRadiusY = (H / 2) - padding - 22 - 16
+  // 动态计算半径，预留边界空间
+  const maxRadiusX = (viewW.value / 2) - padding - 22 - 16
+  const maxRadiusY = (viewH.value / 2) - padding - 22 - 16
 
-  // 根据节点数量调整半径，节点越多半径越小
+  // 根据节点数量调整半径
   const scaleFactor = Math.min(1, 35 / Math.max(totalNodes, 20))
-  const BRIDGE_RX = Math.max(40, maxRadiusX * 0.55 * scaleFactor)
-  const BRIDGE_RY = Math.max(30, maxRadiusY * 0.55 * scaleFactor)
-  const LEAF_RX = Math.max(60, maxRadiusX * 0.9 * scaleFactor)
-  const LEAF_RY = Math.max(45, maxRadiusY * 0.9 * scaleFactor)
+  const BRIDGE_RX = Math.max(35, maxRadiusX * 0.55 * scaleFactor)
+  const BRIDGE_RY = Math.max(28, maxRadiusY * 0.55 * scaleFactor)
+  const LEAF_RX = Math.max(55, maxRadiusX * 0.88 * scaleFactor)
+  const LEAF_RY = Math.max(42, maxRadiusY * 0.88 * scaleFactor)
 
   const allGroups = []
   for (const bid of bridgeIds) allGroups.push({ id: bid, type: 'bridge', children: bridgeChildrenMap[bid] || [] })
@@ -328,7 +334,7 @@ const graph = computed(() => {
     iterations: 25,
     minDist: 16,
     damping: 0.82,
-    bounds: { minX: 0, maxX: W, minY: 0, maxY: H, padding: 18 },
+    bounds: { minX: 0, maxX: viewW.value, minY: 0, maxY: viewH.value, padding: 22 },
   })
 
   const finalNodes = repulsedNodes.map((n) => ({ ...n }))
@@ -379,36 +385,142 @@ const graph = computed(() => {
     }
 
     geoEdges.push({
-      target: tgtId,
-      isContain,
+      ...e,
       pathD,
-      width: isContain ? 1 : 1 + ((e.npmi + 1) / 2) * 2.5,
-      opacity: e.diaphaneity || 0.5,
-      dash: dashOf(e.type),
+      opacity: isContain ? 0.55 : 0.85,
+      width: isContain ? 1 : 1.8,
+      dash: dashOf(e.relation_type),
+      isContain,
     })
   }
 
-  const centerName = center.name
+  const containCount = containEdges.length
+  const directCount = directEdges.length
+  const bridgeCount = bridgeChildrenEdges.length
+
   return {
-    centerName,
-    centerFont: centerFont(centerName),
     centerX: cx,
     centerY: cy,
     centerR: 22,
+    centerName: center.name,
+    centerFont: centerFont(center.name),
     nodes: finalNodes,
     edges: geoEdges,
+    stats: {
+      contain: containCount,
+      direct: directCount,
+      bridge: bridgeCount,
+      total: containCount + directCount + bridgeCount,
+    },
   }
 })
 
-const hoverNode = computed(() => {
-  if (!graph.value || !hover.value) return null
-  return graph.value.nodes.find((n) => n.id === hover.value)
+// 计算所有节点的边界框
+const bounds = computed(() => {
+  if (!graph.value) return { minX: 0, minY: 0, maxX: viewW.value, maxY: viewH.value }
+  const allX = [graph.value.centerX, ...graph.value.nodes.map(n => n.x)]
+  const allY = [graph.value.centerY, ...graph.value.nodes.map(n => n.y)]
+  const allR = [graph.value.centerR, ...graph.value.nodes.map(n => n.r)]
+
+  let minX = Math.min(...allX)
+  let minY = Math.min(...allY)
+  let maxX = Math.max(...allX)
+  let maxY = Math.max(...allY)
+  const maxR = Math.max(...allR)
+
+  // 扩展边界以包含节点半径
+  minX -= maxR + 4
+  minY -= maxR + 4
+  maxX += maxR + 4
+  maxY += maxR + 4
+
+  return { minX, minY, maxX, maxY }
 })
 
-function active(n) { return hover.value === n.id }
+// 自适应变换：缩放并居中所有节点
+const fitTransform = computed(() => {
+  const b = bounds.value
+  const graphW = b.maxX - b.minX
+  const graphH = b.maxY - b.minY
+
+  // 计算可用空间（SVG viewBox 尺寸）
+  const availW = viewW.value
+  const availH = viewH.value
+
+  // 计算缩放比例，使所有节点适配画布
+  const padding = 20
+  const scaleX = (availW - padding * 2) / graphW
+  const scaleY = (availH - padding * 2) / graphH
+  const autoScale = Math.min(scaleX, scaleY, 1)  // 不放大，只缩小
+
+  // 应用用户自定义缩放
+  const finalScale = autoScale * customZoom.value
+
+  // 计算居中偏移
+  const graphCenterX = (b.minX + b.maxX) / 2
+  const graphCenterY = (b.minY + b.maxY) / 2
+
+  // 先平移到原点，再缩放，再平移到画布中心
+  const tx = viewW.value / 2 - graphCenterX * finalScale
+  const ty = viewH.value / 2 - graphCenterY * finalScale
+
+  return `translate(${tx},${ty}) scale(${finalScale})`
+})
+
+// 监听容器尺寸变化
+function updateContainerSize() {
+  if (!containerRef.value) return
+  const rect = containerRef.value.getBoundingClientRect()
+  const footHeight = 40  // 底部详情条高度
+  const svgH = rect.height - footHeight
+  // 使用实际容器尺寸作为 viewBox
+  viewW.value = Math.max(100, Math.round(rect.width))
+  viewH.value = Math.max(80, Math.round(svgH))
+}
+
+let resizeObserver = null
+
+onMounted(() => {
+  nextTick(() => {
+    updateContainerSize()
+    resizeObserver = new ResizeObserver(updateContainerSize)
+    if (containerRef.value) {
+      resizeObserver.observe(containerRef.value)
+    }
+  })
+})
+
+onUnmounted(() => {
+  if (resizeObserver) resizeObserver.disconnect()
+})
+
+watch(() => props.data, () => {
+  customZoom.value = 1  // 数据变化时重置缩放
+}, { deep: true })
+
+function onWheel(e) {
+  const delta = e.deltaY > 0 ? 0.9 : 1.1
+  customZoom.value = Math.max(MIN_CUSTOM_ZOOM, Math.min(MAX_CUSTOM_ZOOM, customZoom.value * delta))
+}
+
+const hoverNode = computed(() => {
+  if (!hover.value || !graph.value) return null
+  const n = graph.value.nodes.find((n) => n.id === hover.value)
+  if (!n) return null
+  const edge = props.data?.edges?.find((e) =>
+    (e.source === props.data?.nodes?.find((nd) => nd.center)?.id && e.target === n.id) ||
+    e.source === n.id
+  )
+  return { node: n, edge }
+})
+
+function active(n) {
+  return hover.value === n.id
+}
 
 function clickNode(n) {
-  if (!n.concept_id) return
-  router.push('/concept/' + n.concept_id)
+  if (n.concept_id) {
+    router.push(`/concept/${n.concept_id}`)
+  }
 }
 </script>
