@@ -18,18 +18,20 @@
 
     <!-- 宣纸信息层：文字浮于册页之上（细墨线 + 双线版框） -->
     <div class="glass absolute inset-x-3.5 top-[35%] bottom-3.5 rounded-[3px] border border-moyan/15
-      flex flex-col items-center justify-center gap-2 text-center px-5 py-5">
+      flex flex-col items-center text-center px-4 py-4">
       <!-- ① 意象名称（全卡视觉核心，古籍题名感） -->
-      <h3 class="font-kai text-4xl tracking-[0.15em] text-moyan leading-none mb-1">{{ concept.name }}</h3>
-      <!-- ② 意象分类（辅助信息：细边框小签，随意象主题色） -->
-      <CategoryTag :main="concept.category_main" :sub="concept.category_sub" :theme-color="concept.theme_color" />
-      <!-- ③ 代表名句（单行完整显示，字号随长度自适应收缩；mt-5 形成批注区断点） -->
-      <p v-if="concept.classic_clause" ref="verseEl"
-        class="verse w-full max-w-full whitespace-nowrap overflow-hidden font-song text-[13px] font-medium text-moyan/80 tracking-[0.08em] leading-relaxed mt-5">
-        {{ concept.classic_clause }}
-      </p>
-      <!-- ④ 情感标签（低饱和辅助信息，小而淡） -->
-      <div class="flex flex-wrap justify-center gap-2.5 mt-4">
+      <h3 class="font-kai text-3xl sm:text-4xl tracking-[0.15em] text-moyan leading-none shrink-0">{{ concept.name }}</h3>
+      <!-- ② 意象分类（辅助信息：细边框小签，随意象主题色），与名称小间距 -->
+      <CategoryTag class="shrink-0 mt-2.5" :main="concept.category_main" :sub="concept.category_sub" :theme-color="concept.theme_color" />
+      <!-- ③ 代表名句：占据分类标签 → 情感标签之间的全部留白，并在其中垂直居中 -->
+      <div class="w-full flex-1 flex items-center justify-center min-h-0">
+        <p v-if="concept.classic_clause" ref="verseEl"
+          class="verse w-full max-w-full text-center whitespace-nowrap overflow-hidden font-song text-[13px] font-medium text-moyan/80 tracking-[0.05em] leading-snug">
+          {{ concept.classic_clause }}
+        </p>
+      </div>
+      <!-- ④ 情感标签：贴在玻璃底部 -->
+      <div class="flex flex-wrap justify-center gap-2 shrink-0 w-full pt-2">
         <EmotionTag v-for="tag in concept.emotion_tags.slice(0, 3)" :key="tag" :tag="tag" />
       </div>
     </div>
@@ -52,20 +54,34 @@ function fitVerse() {
   if (!el) return
   el.style.fontSize = ''                 // 复位为基准字号（13px）
   let s = 13
-  while (s > 10.5 && el.scrollWidth > el.clientWidth) {
+  // 安全限次：避免极端情况下无限循环
+  let iter = 0
+  while (iter < 8 && s > 10.5 && el.scrollWidth > el.clientWidth && el.clientWidth > 0) {
     s -= 0.5
     el.style.fontSize = s + 'px'
+    iter++
   }
 }
 
+function fitVerseWithRetry() {
+  nextTick(() => {
+    requestAnimationFrame(() => {
+      fitVerse()
+      // 动画（rise-in / resize）导致的二次布局，再测量一次
+      setTimeout(fitVerse, 120)
+      setTimeout(fitVerse, 320)
+    })
+  })
+}
+
 onMounted(() => {
-  nextTick(fitVerse)
+  fitVerseWithRetry()
   // 卡片跨断点变宽/变窄时重算
   verseRO = new ResizeObserver(() => fitVerse())
   if (verseEl.value) verseRO.observe(verseEl.value)
 })
 // 换一批/翻页后意象更换，重新测量
-watch(() => props.concept.id, () => nextTick(fitVerse))
+watch(() => props.concept.id, () => fitVerseWithRetry())
 onBeforeUnmount(() => verseRO && verseRO.disconnect())
 </script>
 
