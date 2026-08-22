@@ -40,9 +40,6 @@ def artwork_list(
     counts = dict(db.query(Artwork.dynasty_main, func.count(Artwork.id))
                   .group_by(Artwork.dynasty_main).all())
     dynasties = [{"name": g, "count": counts.get(g, 0)} for g in ARTWORK_DYNASTY_GROUPS if counts.get(g)]
-    uncategorized = sum(v for k, v in counts.items() if k and k not in ARTWORK_DYNASTY_GROUPS)
-    if uncategorized:
-        dynasties.append({"name": "其他", "count": uncategorized})
 
     subjects = sorted({s for a in db.query(Artwork.subject_names).all() for s in split_subjects(a[0])})
     return ApiResp(data={

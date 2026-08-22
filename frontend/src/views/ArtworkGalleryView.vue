@@ -47,17 +47,19 @@
     <div v-if="loading && !items.length" class="py-20 text-center text-qianhui">加载中…</div>
     <div v-else-if="!items.length" class="py-20 text-center text-qianhui">未找到匹配的艺术品</div>
     <div v-else>
-      <div class="columns-1 sm:columns-2 lg:columns-3 gap-6 mt-8 [&>div]:mb-6">
-        <div v-for="(a, i) in items" :key="a.id"
-          class="card card-hover overflow-hidden cursor-pointer break-inside-avoid rise-in gallery-card"
-          :style="{ animationDelay: (i % 6) * 0.06 + 's' }"
-          @click="openDetail(a.id)">
-          <!-- 封面自动匹配作品图，加载失败回退大图 -->
-          <img :src="a.thumb_url || a.image_url" :alt="a.name" class="w-full object-cover" loading="lazy" decoding="async"
-            @error="(e) => { if (e.target.src !== a.image_url) e.target.src = a.image_url }" />
-          <div class="p-4">
-            <h3 class="font-song font-semibold">《{{ a.name }}》</h3>
-            <p class="text-xs text-qianhui mt-1">{{ a.dynasty_period || a.dynasty_main }} · {{ a.artist }}</p>
+      <div class="flex gap-6 mt-8 items-start">
+        <div v-for="(col, ci) in columns" :key="'col-' + ci" class="flex-1 min-w-0 flex flex-col gap-6">
+          <div v-for="(a, j) in col" :key="a.id"
+            class="card card-hover overflow-hidden cursor-pointer rise-in"
+            :style="{ animationDelay: ((ci + j * colCount) % 6) * 0.06 + 's' }"
+            @click="openDetail(a.id)">
+            <!-- 封面自动匹配作品图，加载失败隐藏破图图标，保留占位底 -->
+            <img :src="a.thumb_url || a.image_url" :alt="a.name" class="w-full block min-h-48 bg-black/5" decoding="async"
+              @error="onImgError" />
+            <div class="p-4">
+              <h3 class="font-song font-semibold">《{{ a.name }}》</h3>
+              <p class="text-xs text-qianhui mt-1">{{ a.dynasty_period || a.dynasty_main }} · {{ a.artist }}</p>
+            </div>
           </div>
         </div>
       </div>
@@ -79,12 +81,12 @@
         <div v-if="fullscreen" class="fixed inset-0 z-[60] bg-black flex items-center justify-center" @dblclick="exitFullscreen">
           <div class="relative w-full h-full overflow-hidden" ref="zoomBox"
             @wheel.prevent="onWheel" @mousedown="startPan" @mousemove="onPan" @mouseup="endPan" @mouseleave="endPan">
-            <img :src="detail.image_url" :alt="detail.name" class="absolute select-none max-w-none max-w-[90vw] max-h-[90vh]" draggable="false"
+            <img :src="detail.image_url" :alt="detail.name" class="absolute select-none max-w-none" draggable="false"
               style="left:50%;top:50%"
               :style="{ transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }" />
             <div v-if="lens.on" class="absolute pointer-events-none rounded-full border-2 border-xuanzhi/70 shadow-2xl overflow-hidden"
               :style="{ left: lens.x - 90 + 'px', top: lens.y - 90 + 'px', width: '180px', height: '180px' }">
-              <img :src="detail.image_url" class="absolute max-w-none max-w-[90vw] max-h-[90vh]"
+              <img :src="detail.image_url" class="absolute max-w-none"
                 style="left:50%;top:50%"
                 :style="{ transform: `translate(-50%, -50%) translate(${pan.x + lens.ox}px, ${pan.y + lens.oy}px) scale(${zoom * 2.5})` }" />
             </div>
@@ -184,16 +186,32 @@ const PAGE_SIZE = 48
 let currentPage = 1
 let observer = null
 
+// 瀑布流列数（响应式）：<640 单列、<1024 双列、其余三列
+const colCount = ref(3)
+function updateColCount() {
+  const w = window.innerWidth
+  colCount.value = w < 640 ? 1 : w < 1024 ? 2 : 3
+}
+// 轮转分配到各列：追加新页时既有条目列位置不变，避免 CSS 多列重排导致的跳动与图片重复出现
+const columns = computed(() => {
+  const n = colCount.value
+  const cols = Array.from({ length: n }, () => [])
+  items.value.forEach((item, i) => cols[i % n].push(item))
+  return cols
+})
+
 // 缩放/放大镜
 const zoom = ref(1)
 const pan = ref({ x: 0, y: 0 })
 const lens = ref({ on: false, x: 0, y: 0, ox: 0, oy: 0 })
 const zoomBox = ref(null)
 let panning = false, panStart = { x: 0, y: 0 }, panOrigin = { x: 0, y: 0 }
+let lastMouse = { x: 0, y: 0 }
 
 function enterFullscreen() {
   fullscreen.value = true
   zoom.value = 1; pan.value = { x: 0, y: 0 }
+  lastMouse = { x: window.innerWidth / 2, y: window.innerHeight / 2 }
   // 自适应初始缩放：画幅适配窗口
   nextTick(() => {
     const box = zoomBox.value
@@ -208,27 +226,31 @@ function enterFullscreen() {
 function exitFullscreen() { fullscreen.value = false; lens.value.on = false }
 function closeDetail() { detail.value = null; fullscreen.value = false }
 
-function onWheel(e) { zoom.value = Math.min(6, Math.max(0.5, zoom.value + (e.deltaY < 0 ? 0.25 : -0.25))) }
+function onWheel(e) {
+  zoom.value = Math.min(6, Math.max(0.5, zoom.value + (e.deltaY < 0 ? 0.25 : -0.25)))
+  if (lens.value.on) updateLens()
+}
 function startPan(e) {
   if (lens.value.on) return
   panning = true; panStart = { x: e.clientX, y: e.clientY }; panOrigin = { ...pan.value }
 }
 function onPan(e) {
-  if (lens.value.on) { updateLens(e); return }
+  lastMouse.x = e.clientX; lastMouse.y = e.clientY
+  if (lens.value.on) { updateLens(); return }
   if (!panning) return
   pan.value = { x: panOrigin.x + (e.clientX - panStart.x), y: panOrigin.y + (e.clientY - panStart.y) }
 }
 function endPan() { panning = false }
-function updateLens(e) {
+function updateLens() {
   const rect = zoomBox.value.getBoundingClientRect()
-  lens.value.x = e.clientX - rect.left
-  lens.value.y = e.clientY - rect.top
+  lens.value.x = lastMouse.x - rect.left
+  lens.value.y = lastMouse.y - rect.top
   // 透镜补偿：ox = 2.5*(cx-mx) + 1.5*px
   const cx = rect.width / 2, cy = rect.height / 2
   lens.value.ox = 2.5 * (cx - lens.value.x) + 1.5 * pan.value.x
   lens.value.oy = 2.5 * (cy - lens.value.y) + 1.5 * pan.value.y
 }
-function onKeyToggle(e) { if (fullscreen.value && (e.key === 'l' || e.key === 'L')) lens.value.on = true }
+function onKeyToggle(e) { if (fullscreen.value && (e.key === 'l' || e.key === 'L')) { lens.value.on = true; updateLens() } }
 function onKeyRelease(e) { if (e.key === 'l' || e.key === 'L') lens.value.on = false }
 function onEsc(e) {
   if (e.key === 'Escape') { if (fullscreen.value) exitFullscreen(); else if (detail.value) closeDetail() }
@@ -285,12 +307,19 @@ function toggleDynasty(name) {
 
 async function openDetail(id) { detail.value = await getArtworkDetail(id) }
 
+// 外部图源（artlib.cn）加载失败时隐藏破图图标，保留占位底色与下方标题/作者
+function onImgError(e) {
+  e.target.style.opacity = '0'
+}
+
 // 详情弹窗打开时锁定背景滚动，避免鼠标在卡片外滚动导致页面/艺术品跟着滚动
 watch(detail, (v) => { document.body.style.overflow = v ? 'hidden' : '' })
 watch(fullscreen, (v) => { if (v) document.body.style.overflow = 'hidden' })
 watch([hasMore, loading], () => ensureObserver())
 
 onMounted(async () => {
+  updateColCount()
+  window.addEventListener('resize', updateColCount)
   document.addEventListener('keydown', onEsc)
   document.addEventListener('keydown', onKeyToggle)
   document.addEventListener('keyup', onKeyRelease)
@@ -299,6 +328,7 @@ onMounted(async () => {
   if (route.query.id) openDetail(Number(route.query.id))
 })
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateColCount)
   document.removeEventListener('keydown', onEsc)
   document.removeEventListener('keydown', onKeyToggle)
   document.removeEventListener('keyup', onKeyRelease)
@@ -308,9 +338,4 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-/* 画廊卡片：content-visibility 跳过屏外渲染，减少快速滚动时的布局抖动 */
-.gallery-card {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 320px;
-}
 </style>
