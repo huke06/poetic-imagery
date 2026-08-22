@@ -181,7 +181,8 @@
         </div>
         <div class="card p-5">
           <h3 class="text-sm text-qianhui tracking-widest mb-2">意象用法画像</h3>
-          <VChart :option="usageRadarOption" height="260px" />
+          <VChart v-if="usageRadarOption" :option="usageRadarOption" height="260px" />
+          <p v-else class="text-sm text-qianhui/70 py-8 text-center">暂无用法画像数据</p>
         </div>
       </div>
 
@@ -602,10 +603,10 @@ const usageRadarOption = computed(() => {
       acc[s.role_in_poem] = (acc[s.role_in_poem] || 0) + 2
     }
   }
-  // 平方根压缩数值差距
-  const values = ROLE_ORDER.map(r => Math.round(Math.sqrt((acc[r] || 0) + 1) * 10) / 10)
+  // 平方根压缩数值差距（去掉 +1 基线，无分值的角色为 0，避免各意象雷达雷同）
+  const values = ROLE_ORDER.map(r => Math.round(Math.sqrt(acc[r] || 0) * 10) / 10)
   const sumVal = values.reduce((a, b) => a + b, 0)
-  if (sumVal === 0) return {}  // 无数据时不渲染
+  if (sumVal === 0) return null  // 无数据时不渲染（显示占位提示）
   const maxVal = Math.max(...values, 1)
   const color = detail.value?.theme_color || '#2B4C7E'
   return {
