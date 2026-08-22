@@ -606,10 +606,10 @@ const usageRadarOption = computed(() => {
       if (role) acc[role] = (acc[role] || 0) + 2
     }
   }
-  // 平方根压缩数值差距（去掉 +1 基线，无分值的角色为 0，避免各意象雷达雷同）
-  const values = ROLE_ORDER.map(r => Math.round(Math.sqrt(acc[r] || 0) * 10) / 10)
-  const sumVal = values.reduce((a, b) => a + b, 0)
-  if (sumVal === 0) return null  // 无数据时不渲染（显示占位提示）
+  const hasData = ROLE_ORDER.some((r) => (acc[r] || 0) > 0)
+  if (!hasData) return null  // 无真实用法数据时不渲染（显示占位提示）
+  // 平方根压缩数值差距（保留 +1 基线，雷达圆润饱满；配合 AI 分析填充的真实分布，各意象形状各异）
+  const values = ROLE_ORDER.map(r => Math.round(Math.sqrt((acc[r] || 0) + 1) * 10) / 10)
   const maxVal = Math.max(...values, 1)
   const color = detail.value?.theme_color || '#2B4C7E'
   return {
