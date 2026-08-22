@@ -12,32 +12,34 @@
         </router-link>
         <div class="flex items-center gap-1 sm:gap-2 text-sm">
           <router-link v-for="item in navItems" :key="item.to" :to="item.to"
-            class="px-3 py-2 rounded-md text-moyan/80 hover:text-shiqing hover:bg-shiqing/5 transition-colors tracking-wider"
-            :class="{ 'text-shiqing font-semibold bg-shiqing/5': isActive(item.to) }">
+            class="nav-link" :class="{ 'is-active': isActive(item.to) }">
             {{ item.label }}
           </router-link>
-          <router-link v-if="!auth.loggedIn" to="/auth" class="px-3 py-2 text-xs text-qianhui hover:text-shiqing tracking-wider">登录</router-link>
+          <router-link v-if="!auth.loggedIn" to="/auth" class="auth-link">登录</router-link>
           <div v-else class="flex items-center gap-2 text-xs">
-            <router-link to="/auth" class="text-moyan/80 hover:text-shiqing tracking-wider">个人中心</router-link>
+            <router-link to="/auth" class="nav-link">个人中心</router-link>
             <span class="tag border-shiqing/40 text-shiqing !text-[10px]" v-if="auth.user?.role==='admin'">管理员</span>
           </div>
           <!-- 诗文搜索 -->
           <div class="relative ml-1">
             <input v-model="searchQ" @keyup.enter="doSearch" @focus="showSearch = true"
-              placeholder="搜诗/作者…" class="w-32 sm:w-40 pl-8 pr-3 py-1.5 text-xs rounded-full border border-shiqing/20 bg-white/50
-              focus:outline-none focus:border-shiqing focus:w-48 transition-all" />
-            <svg class="absolute left-2.5 top-2 w-3.5 h-3.5 text-qianhui" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              placeholder="搜诗 / 作者"
+              class="search-input w-32 sm:w-40 pl-8 pr-3 py-1.5 text-xs rounded-full border transition-all focus:w-48" />
+            <svg class="absolute left-2.5 top-2 w-3.5 h-3.5 text-shiqing/55" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
             </svg>
             <!-- 搜索结果下拉 -->
-            <div v-if="showSearch && searchResults.length" class="absolute right-0 top-10 w-80 max-h-72 overflow-y-auto card shadow-xl z-50 py-1">
+            <div v-if="showSearch && searchResults.length" class="absolute right-0 top-10 w-80 max-h-72 overflow-y-auto card shadow-xl z-50 py-1" @wheel="onSearchWheel">
               <div v-for="r in searchResults" :key="r.id"
                 class="px-4 py-2.5 text-sm hover:bg-shiqing/5 cursor-pointer border-b border-black/5 last:border-0"
-                @click="$router.push(`/poetry/${r.id}`); showSearch = false; searchQ = ''">
+                @click="$router.push(`/poetry/${r.id}`); collapseSearch(); searchQ = ''">
                 <b class="font-song">{{ r.title }}</b>
                 <span class="text-xs text-qianhui ml-2">{{ r.dynasty }} · {{ r.author }}</span>
               </div>
-              <div class="px-4 py-2 text-xs text-qianhui text-center">共 {{ searchTotal }} 条，回车查看更多…</div>
+              <div class="flex items-center justify-between px-4 py-2 text-xs text-qianhui border-t border-black/5">
+                <span>{{ hasMore ? `共 ${searchTotal} 条，回车查看更多…` : `共 ${searchTotal} 条，已全部显示` }}</span>
+                <button class="ml-2 shrink-0 hover:text-shiqing transition-colors" @click="collapseSearch">收起 ▲</button>
+              </div>
             </div>
           </div>
         </div>
@@ -76,7 +78,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { searchPoetry } from './api'
 import { auth } from './stores/auth'
@@ -100,15 +102,103 @@ const searchQ = ref('')
 const searchResults = ref([])
 const searchTotal = ref(0)
 const showSearch = ref(false)
+const searchPage = ref(1)
+const lastSearchQ = ref('')
+
+const hasMore = computed(() => searchResults.value.length < searchTotal.value)
+
+// 清空输入即清空结果，不保留搜索记录
+watch(searchQ, (q) => {
+  if (!q.trim()) {
+    searchResults.value = []
+    searchTotal.value = 0
+    searchPage.value = 1
+    lastSearchQ.value = ''
+    showSearch.value = false
+  }
+})
+
+function collapseSearch() { showSearch.value = false }
+
+// 鼠标在结果下拉上滚动时，阻止滚动链传播到背后页面；下拉自身可正常滚动
+function onSearchWheel(e) {
+  const el = e.currentTarget
+  const canScroll = el.scrollHeight > el.clientHeight
+  if (!canScroll) { e.preventDefault(); return }
+  const atTop = el.scrollTop <= 0 && e.deltaY < 0
+  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1 && e.deltaY > 0
+  if (atTop || atBottom) e.preventDefault()
+}
 
 async function doSearch() {
   const q = searchQ.value.trim()
-  if (!q) { searchResults.value = []; return }
+  if (!q) {
+    searchResults.value = []
+    searchTotal.value = 0
+    searchPage.value = 1
+    lastSearchQ.value = ''
+    showSearch.value = false
+    return
+  }
+  // 查询词未变且还有更多 → 回车加载下一页；否则全新搜索
+  const sameQuery = q === lastSearchQ.value
+  const more = searchResults.value.length < searchTotal.value
+  searchPage.value = (sameQuery && more) ? searchPage.value + 1 : 1
+  if (!(sameQuery && more)) lastSearchQ.value = q
   try {
-    const data = await searchPoetry({ key: q, page: 1, page_size: 6 })
-    searchResults.value = data.items
+    const data = await searchPoetry({ key: q, page: searchPage.value, page_size: 6 })
+    searchResults.value = searchPage.value === 1
+      ? data.items
+      : [...searchResults.value, ...data.items]
     searchTotal.value = data.total
     showSearch.value = true
-  } catch { searchResults.value = [] }
+  } catch { if (searchPage.value === 1) searchResults.value = [] }
 }
 </script>
+
+<style scoped>
+/* ── 导航链接：宋体 + 滑动下划线 ── */
+.nav-link {
+  position: relative; display: inline-block;
+  padding: 0.5rem 0.75rem;
+  font-family: 'Noto Serif SC', 'Songti SC', STSong, 'SimSun', serif;
+  letter-spacing: 0.12em; color: rgba(44, 44, 44, 0.75);
+  transition: color 0.2s; white-space: nowrap;
+}
+.nav-link::after {
+  content: ''; position: absolute;
+  left: 0.75rem; right: 0.75rem; bottom: 0.15rem;
+  height: 2px; border-radius: 2px; background: #2B4C7E;
+  transform: scaleX(0); transform-origin: center;
+  transition: transform 0.25s ease;
+}
+.nav-link:hover { color: #2B4C7E; }
+.nav-link:hover::after, .nav-link.is-active::after { transform: scaleX(1); }
+.nav-link.is-active { color: #2B4C7E; font-weight: 600; }
+
+/* ── 登录按钮：石青描边药丸 ── */
+.auth-link {
+  display: inline-flex; align-items: center;
+  padding: 5px 16px; font-size: 12px; letter-spacing: 0.15em;
+  color: #2B4C7E; border: 1px solid rgba(43, 76, 126, 0.35);
+  border-radius: 999px; background: rgba(255, 255, 255, 0.5);
+  transition: all 0.2s; white-space: nowrap;
+}
+.auth-link:hover {
+  background: #2B4C7E; color: #F5F1E8; border-color: #2B4C7E;
+  transform: translateY(-1px);
+}
+
+/* ── 搜索输入 ── */
+.search-input {
+  font-family: 'Noto Serif SC', 'Songti SC', STSong, serif;
+  border-color: rgba(43, 76, 126, 0.22); background: rgba(255, 255, 255, 0.6);
+  color: #2C2C2C;
+}
+.search-input::placeholder { color: rgba(107, 107, 107, 0.6); }
+.search-input:focus {
+  outline: none; border-color: #2B4C7E;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 0 3px rgba(43, 76, 126, 0.08);
+}
+</style>
