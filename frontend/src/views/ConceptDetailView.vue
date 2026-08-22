@@ -26,7 +26,7 @@
             <span>起源 <b class="text-moyan">{{ detail.origin_dynasty }}</b></span>
             <span>鼎盛 <b class="text-moyan">{{ detail.peak_dynasty }}</b></span>
             <span>收录诗文 <b class="text-moyan">{{ detail.poetry_count }}</b> 首</span>
-            <span>艺术作品 <b class="text-moyan">{{ detail.artwork_count }}</b> 件</span>
+            <span v-if="detail.artwork_count">艺术作品 <b class="text-moyan">{{ detail.artwork_count }}</b> 件</span>
           </div>
         </div>
         <!-- 情感分布：环形饼图（色彩按一级情感标签，文字标注二级情感标签与占比） -->

@@ -159,7 +159,7 @@ def _map_legacy_artwork(a: dict) -> dict:
 def import_concept_data(db: Session, data: dict, with_svg: bool = True) -> dict:
     """导入一个意象数据包，返回统计报告。调用方负责 commit/rollback。"""
     report = {"concept": "", "concept_created": False, "poetry_new": 0, "poetry_reused": 0,
-              "rel_new": 0, "rel_skipped": 0, "couplet_new": 0, "artwork_new": 0, "artwork_reused": 0,
+              "rel_new": 0, "rel_skipped": 0, "rel_updated": 0, "couplet_new": 0, "artwork_new": 0, "artwork_reused": 0,
               "relation_new": 0, "warnings": []}
 
     cdata = _map_legacy_concept(data.get("concept", {}))
@@ -237,20 +237,19 @@ def import_concept_data(db: Session, data: dict, with_svg: bool = True) -> dict:
             r = _norm_rel(raw)
             if not r["clause"]:
                 continue
+            emotion_main = emotion_main_of(r["emotion"])
             dup = db.query(ConceptPoetryRel).filter_by(
                 concept_id=concept.id, poetry_id=poetry.id, clause=r["clause"]).first()
             if dup:
-                report["rel_skipped"] += 1
+                # 已存在：同步 CSV 直接提供的可编辑字段，避免重新上传时 weight/emotion 改动被静默丢弃
+                dup.weight = r["weight"]
+                dup.emotion = r["emotion"]
+                dup.is_classic = r["is_classic"]
+                dup.emotion_main = emotion_main
+                report["rel_updated"] += 1
                 continue
-            r["emotion_main"] = emotion_main_of(r["emotion"])
-            # 去重：同一概念+诗文+名句不重复导入
-            dup = db.query(ConceptPoetryRel).filter_by(
-                concept_id=concept.id, poetry_id=poetry.id, clause=r.get("clause", "")
-            ).first()
-            if dup:
-                report["rel_skipped"] += 1
-                continue
-            db.add(ConceptPoetryRel(concept_id=concept.id, poetry_id=poetry.id, **r))
+            db.add(ConceptPoetryRel(concept_id=concept.id, poetry_id=poetry.id,
+                                    **r, emotion_main=emotion_main))
             report["rel_new"] += 1
 
     # 对仗
@@ -913,11 +912,17 @@ def parse_csv(text: str) -> tuple[str, list[dict] | None, list[str]]:
                     pm[key]["appreciation"] = _unescape_newlines(row["appreciation"].strip())
             clause = (row.get("clause") or "").strip()
             if clause:
+                _w = (row.get("weight") or "1").strip() or "1"
+                try:
+                    weight = int(_w)
+                except ValueError:
+                    errors.append(f"第 {i} 行：weight「{_w}」需为整数")
+                    weight = 1
                 pm[key]["rels"].append({
                     "clause": clause,
                     "emotion": (row.get("emotion") or "").strip(),
                     "is_classic": 1 if (row.get("is_classic") or "").strip() in ("1", "是", "true", "TRUE") else 0,
-                    "weight": int((row.get("weight") or "1").strip() or 1),
+                    "weight": weight,
                 })
         packs = []
         for pack in packs_map.values():
