@@ -5,10 +5,11 @@
     <!-- 筛选栏 -->
     <div class="space-y-3 mt-6">
       <!-- 模式切换 -->
-      <div class="flex bg-shiqing/5 rounded-full p-0.5 w-fit">
-        <button class="px-4 py-1.5 text-xs rounded-full transition-all" :class="filterMode==='category'?'bg-shiqing text-white shadow-sm':'text-qianhui hover:text-shiqing'"
+      <div class="mode-switch" :class="{ 'is-emotion': filterMode === 'emotion' }">
+        <span class="mode-switch__thumb" aria-hidden="true"></span>
+        <button type="button" class="mode-switch__btn" :class="{ 'is-on': filterMode === 'category' }"
           @click="filterMode='category';activeCategory='';activeSub='';activeEmotionMain='';load()">按意象性质</button>
-        <button class="px-4 py-1.5 text-xs rounded-full transition-all" :class="filterMode==='emotion'?'bg-shiqing text-white shadow-sm':'text-qianhui hover:text-shiqing'"
+        <button type="button" class="mode-switch__btn" :class="{ 'is-on': filterMode === 'emotion' }"
           @click="filterMode='emotion';activeCategory='';activeSub='';activeEmotionMain='';load()">按意象情感</button>
       </div>
       <div v-show="filterMode==='category'" class="flex flex-wrap items-center gap-2">
@@ -183,4 +184,32 @@ onMounted(async () => {
     0 0 0 2px color-mix(in srgb, var(--tc) 50%, transparent),
     0 0 28px color-mix(in srgb, var(--tc) 26%, transparent);
 }
+
+/* ── 模式切换：滑动胶囊 ── */
+.mode-switch {
+  position: relative;
+  display: inline-flex;
+  padding: 2px;
+  background: rgba(43, 76, 126, 0.06);
+  border-radius: 999px;
+}
+.mode-switch__thumb {
+  position: absolute;
+  top: 2px; bottom: 2px; left: 2px;
+  width: calc(50% - 2px);            /* 两按钮等宽 → 恰为一个按钮宽 */
+  background: #2B4C7E;
+  border-radius: 999px;
+  box-shadow: 0 1px 4px rgba(43, 76, 126, 0.35);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.mode-switch.is-emotion .mode-switch__thumb { transform: translateX(100%); }
+.mode-switch__btn {
+  position: relative; z-index: 1;
+  padding: 6px 16px; font-size: 12px; letter-spacing: 0.06em; line-height: 1.5;
+  color: #6B6B6B; background: transparent; border: none; cursor: pointer;
+  white-space: nowrap; transition: color 0.28s ease;
+}
+.mode-switch__btn:hover { color: #2B4C7E; }
+.mode-switch__btn.is-on { color: #FFFFFF; }
+.mode-switch__btn.is-on:hover { color: #FFFFFF; }
 </style>
