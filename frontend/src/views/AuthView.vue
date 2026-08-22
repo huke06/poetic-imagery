@@ -129,7 +129,7 @@
   </div>
   <div v-else class="max-w-md mx-auto px-4 py-16">
     <div class="card p-8">
-      <span class="seal !w-14 !h-14 !text-lg mx-auto block text-center">诗</span>
+      <img src="/login-logo.png" alt="诗象万千" class="w-16 h-16 mx-auto block object-contain" />
       <h1 class="font-song text-2xl font-bold text-center mt-4">{{ mode === 'login' ? '登录' : '注册' }}</h1>
 
       <form @submit.prevent="submit" class="mt-6 space-y-4">
