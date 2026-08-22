@@ -131,7 +131,7 @@
           <div ref="atlasRow" class="atlas-row mt-8"
             @wheel.prevent="onAtlasWheel"
             @mousedown="onAtlasDragStart" @mousemove="onAtlasDrag" @mouseup="onAtlasDragEnd" @mouseleave="onAtlasDragEnd">
-            <router-link v-for="(p, i) in atlasPaintings" :key="p.id" to="/atlas"
+            <router-link v-for="(p, i) in atlasPaintings" :key="p.id" :to="'/atlas?id=' + (p.id ?? '') + '&i=' + i"
               class="atlas-card" :class="{ 'atlas-enter': atlasInView }"
               :style="{ animationDelay: (i * 0.07) + 's' }" @click="onAtlasCardClick">
               <div class="atlas-card__img">

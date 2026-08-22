@@ -125,6 +125,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { getAtlasPaintings, getConceptList } from '../api'
 
 /* ─────────── 中文卷号 ─────────── */
@@ -193,6 +194,7 @@ const FALLBACK_PAINTINGS = [
 ]
 
 /* ─────────── State ─────────── */
+const route = useRoute()
 const paintings = ref([])
 const page = ref(0)
 const loading = ref(true)
@@ -288,6 +290,14 @@ onMounted(async () => {
     paintings.value = FALLBACK_PAINTINGS
   } finally {
     loading.value = false
+  }
+  // 支持从首页「诗意图鉴」卡片携带 ?id= 或 ?i= 定位到对应画卷
+  const rid = Number(route.query.id)
+  const idxParam = parseInt(route.query.i, 10)
+  if (!Number.isNaN(rid) && paintings.value.some((p) => Number(p.id) === rid)) {
+    goPage(paintings.value.findIndex((p) => Number(p.id) === rid))
+  } else if (!Number.isNaN(idxParam) && idxParam >= 0 && idxParam < paintings.value.length) {
+    goPage(idxParam)
   }
 })
 
