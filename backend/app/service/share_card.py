@@ -16,9 +16,9 @@ except ImportError:  # 无 Pillow 时 Logo 回退为文字印章
 
 from ..utils.taxonomy import emotion_main_of
 
-FONT_SANS = "PingFang SC,Microsoft YaHei,sans-serif"
-FONT_KAI = "Kaiti SC,STKaiti,KaiTi,SimSun,serif"
-FONT_SONG = "Noto Serif SC,Songti SC,STSong,SimSun,serif"
+FONT_SANS = "'PingFang SC','Microsoft YaHei',sans-serif"
+FONT_KAI = "'Kaiti SC','STKaiti','KaiTi','SimSun',serif"
+FONT_SONG = "'Noto Serif SC','Source Han Serif SC','Songti SC','STSong','SimSun',serif"
 
 # 一级情感大类配色（镜像前端 utils/emotionColors.js，全站统一）
 EMOTION_MAIN_COLORS = {

@@ -48,7 +48,7 @@
     </section>
 
     <!-- ═══ 3. 经典名句 ═══ -->
-    <section class="mingju-section">
+    <section ref="mingjuSection" class="mingju-section">
       <SectionTitle :color="mingjuTitleColor" :sub="`共 ${poetryTotal} 条关联句读`">经典名句</SectionTitle>
       <!-- 朝代筛选：全部朝代（下拉）+ 唐 + 宋 -->
       <div class="flex flex-wrap items-center gap-2 mt-5 text-sm">
@@ -99,7 +99,7 @@
         </div>
         <p v-if="!poetryItems.length && !poetryTotal" class="text-sm text-qianhui/70 py-8 text-center">该筛选条件下暂无名句</p>
       </div>
-      <Pagination :page="page" :page-size="pageSize" :total="poetryTotal" @change="(p) => { page = p; loadPoetries() }" />
+      <Pagination :page="page" :page-size="pageSize" :total="poetryTotal" @change="onMingjuPageChange" />
     </section>
 
     <!-- ═══ 4. 对仗与共现关联 ═══ -->
@@ -293,53 +293,65 @@
             <span class="text-sm font-song font-semibold">以“{{ detail.name }}”创诗</span>
           </div>
           <div class="flex-1 overflow-y-auto p-4">
-            <div class="flex flex-wrap items-center gap-2 text-sm">
-              <label v-for="c in composeConceptOptions" :key="c" class="tag cursor-pointer transition-all"
-                :class="composeConcepts.includes(c) ? '!text-white' : 'hover:bg-black/5'"
-                :style="composeConcepts.includes(c)
-                  ? { background: detail.theme_color, borderColor: detail.theme_color }
-                  : { borderColor: detail.theme_color + '44', color: detail.theme_color }">
-                <input type="checkbox" class="hidden" :value="c" v-model="composeConcepts" />{{ c }}
-              </label>
-            </div>
-            <div class="flex items-start gap-3 mt-4">
-              <select v-model="composeStyle" class="px-3 py-2 text-sm rounded-full border bg-white/70 focus:outline-none shrink-0" :style="{ borderColor: detail.theme_color + '44' }">
-                <option v-for="s in composeStyles" :key="s">{{ s }}</option>
-              </select>
-              <div class="flex-1 min-w-0">
-                <button type="button" class="compose-tone-trigger" :style="{ borderColor: detail.theme_color + '44' }" @click="composeToneOpen = !composeToneOpen">
-                  <template v-if="selectedTones.length">
-                    <span v-for="t in selectedTones" :key="t" class="compose-tone-chip" :style="{ background: detail.theme_color + '14', borderColor: detail.theme_color + '44', color: detail.theme_color }">
-                      {{ t }}<span class="compose-tone-chip__x" @click.stop="removeComposeTone(t)">×</span>
-                    </span>
-                    <span class="compose-tone-clear" :style="{ color: detail.theme_color }" @click.stop="clearComposeTones">清除</span>
-                  </template>
-                  <span v-else class="compose-tone-placeholder">情感基调（可选）</span>
-                  <span class="compose-tone-chevron">{{ composeToneOpen ? '▲' : '▼' }}</span>
-                </button>
-                <Transition name="tone">
-                  <div v-if="composeToneOpen" class="compose-tone-panel">
-                    <div class="flex flex-wrap gap-2">
-                      <label v-for="t in EMOTION_TONES" :key="t" class="tag cursor-pointer transition-all compose-tone-tag"
-                        :class="composeThemes.includes(t) ? '!text-white' : 'hover:bg-black/5'"
-                        :style="composeThemes.includes(t)
-                          ? { background: detail.theme_color, borderColor: detail.theme_color }
-                          : { borderColor: detail.theme_color + '44', color: detail.theme_color }">
-                        <input type="checkbox" class="hidden" :value="t" v-model="composeThemes" />{{ t }}
-                      </label>
-                    </div>
+            <Transition name="compose" mode="out-in">
+              <!-- 创作控件区：生成结果后整体收起 -->
+              <div v-if="!composeResult" key="controls">
+                <div class="flex flex-wrap items-center gap-2 text-sm">
+                  <label v-for="c in composeConceptOptions" :key="c" class="tag cursor-pointer transition-all"
+                    :class="composeConcepts.includes(c) ? '!text-white' : 'hover:bg-black/5'"
+                    :style="composeConcepts.includes(c)
+                      ? { background: detail.theme_color, borderColor: detail.theme_color }
+                      : { borderColor: detail.theme_color + '44', color: detail.theme_color }">
+                    <input type="checkbox" class="hidden" :value="c" v-model="composeConcepts" />{{ c }}
+                  </label>
+                </div>
+                <div class="flex items-start gap-3 mt-4">
+                  <select v-model="composeStyle" class="px-3 py-2 text-sm rounded-full border bg-white/70 focus:outline-none shrink-0" :style="{ borderColor: detail.theme_color + '44' }">
+                    <option v-for="s in composeStyles" :key="s">{{ s }}</option>
+                  </select>
+                  <div class="flex-1 min-w-0">
+                    <button type="button" class="compose-tone-trigger" :style="{ borderColor: detail.theme_color + '44' }" @click="composeToneOpen = !composeToneOpen">
+                      <template v-if="selectedTones.length">
+                        <span v-for="t in selectedTones" :key="t" class="compose-tone-chip" :style="{ background: detail.theme_color + '14', borderColor: detail.theme_color + '44', color: detail.theme_color }">
+                          {{ t }}<span class="compose-tone-chip__x" @click.stop="removeComposeTone(t)">×</span>
+                        </span>
+                        <span class="compose-tone-clear" :style="{ color: detail.theme_color }" @click.stop="clearComposeTones">清除</span>
+                      </template>
+                      <span v-else class="compose-tone-placeholder">情感基调（可选）</span>
+                      <span class="compose-tone-chevron">{{ composeToneOpen ? '▲' : '▼' }}</span>
+                    </button>
+                    <Transition name="tone">
+                      <div v-if="composeToneOpen" class="compose-tone-panel">
+                        <div class="flex flex-wrap gap-2">
+                          <label v-for="t in EMOTION_TONES" :key="t" class="tag cursor-pointer transition-all compose-tone-tag"
+                            :class="composeThemes.includes(t) ? '!text-white' : 'hover:bg-black/5'"
+                            :style="composeThemes.includes(t)
+                              ? { background: detail.theme_color, borderColor: detail.theme_color }
+                              : { borderColor: detail.theme_color + '44', color: detail.theme_color }">
+                            <input type="checkbox" class="hidden" :value="t" v-model="composeThemes" />{{ t }}
+                          </label>
+                        </div>
+                      </div>
+                    </Transition>
                   </div>
-                </Transition>
+                  <button class="btn-primary !rounded-full !py-2 !text-sm shrink-0" :disabled="composeSending || !composeConcepts.length" @click="composePoem">创诗</button>
+                </div>
+                <div v-if="composeSending" class="mt-6 text-sm text-qianhui text-center">正在创作<span class="animate-pulse">…</span></div>
+                <div v-else class="mt-8 text-center text-xs text-qianhui/70">选择意象与体裁，AI 将依平仄格律为您创作</div>
               </div>
-              <button class="btn-primary !rounded-full !py-2 !text-sm shrink-0" :disabled="composeSending || !composeConcepts.length" @click="composePoem">创诗</button>
-            </div>
-            <div v-if="composeSending" class="mt-6 text-sm text-qianhui text-center">正在创作<span class="animate-pulse">…</span></div>
-            <div v-else-if="composeResult" class="mt-6 rounded-lg p-5 border" :style="{ borderColor: detail.theme_color + '33', background: detail.theme_color + '08' }">
-              <h4 class="font-song font-bold text-center" :style="{ color: detail.theme_color }">《{{ composeResult.title }}》</h4>
-              <p class="verse-text text-center text-moyan/90 leading-8 mt-3 whitespace-pre-line">{{ composeResult.poem }}</p>
-              <p v-if="composeResult.note" class="text-[11px] text-qianhui text-center mt-3">{{ composeResult.note }}</p>
-            </div>
-            <div v-else class="mt-8 text-center text-xs text-qianhui/70">选择意象与体裁，AI 将依平仄格律为您创作</div>
+
+              <!-- 诗歌结果区：完整展示 -->
+              <div v-else key="result">
+                <div class="mt-2 rounded-lg p-5 border" :style="{ borderColor: detail.theme_color + '33', background: detail.theme_color + '08' }">
+                  <h4 class="font-song font-bold text-center" :style="{ color: detail.theme_color }">《{{ composeResult.title }}》</h4>
+                  <p class="verse-text text-center text-moyan/90 leading-8 mt-3 whitespace-pre-line">{{ composeResult.poem }}</p>
+                  <p v-if="composeResult.note" class="text-[11px] text-qianhui text-center mt-3">{{ composeResult.note }}</p>
+                </div>
+                <div class="flex justify-center mt-4">
+                  <button class="btn-outline !py-1.5 !px-5 !text-xs" @click="resetCompose">重新创作</button>
+                </div>
+              </div>
+            </Transition>
           </div>
         </div>
       </div>
@@ -348,9 +360,10 @@
     <!-- ═══ 7. 扩展工具 ═══ -->
     <section class="card p-6 flex flex-wrap items-center gap-4">
       <span class="text-sm text-qianhui tracking-widest mr-2">扩展工具</span>
-      <router-link :to="'/share/concept/' + detail.id" class="btn-outline !py-1.5 !px-4 !text-xs">生成分享卡片</router-link>
-      <router-link to="/agent" class="btn-outline !py-1.5 !px-4 !text-xs">前往灵犀助手</router-link>
-      <router-link :to="`/artworks`" class="btn-outline !py-1.5 !px-4 !text-xs">前往艺术展厅</router-link>
+      <router-link :to="'/share/concept/' + detail.id" class="tool-link" style="--c:#9B6820"><span class="tool-ico font-kai">卡</span>生成分享卡片</router-link>
+      <router-link to="/agent" class="tool-link" style="--c:#9B2C1F"><span class="tool-ico font-kai">问</span>前往灵犀助手</router-link>
+      <router-link to="/atlas" class="tool-link" style="--c:#5B7C5F"><span class="tool-ico font-kai">鉴</span>前往诗意图鉴</router-link>
+      <router-link to="/artworks" class="tool-link" style="--c:#9B4423"><span class="tool-ico font-kai">艺</span>前往艺术展厅</router-link>
     </section>
 
     <!-- 共现图谱全屏 -->
@@ -477,6 +490,7 @@ const summarizeLoading = ref(false)
 const { addExplored } = useExploredImageries()
 
 // 名句筛选
+const mingjuSection = ref(null)
 const page = ref(1)
 const pageSize = 6
 const poetryTotal = ref(0)
@@ -629,6 +643,17 @@ async function loadPoetries() {
   })
   poetryTotal.value = data.total
   poetryItems.value = data.items
+}
+
+function scrollToMingju() {
+  const el = mingjuSection.value
+  if (!el) return
+  window.scrollTo({ top: Math.max(0, el.getBoundingClientRect().top + window.scrollY - 88), behavior: 'smooth' })
+}
+
+function onMingjuPageChange(p) {
+  page.value = p
+  loadPoetries().then(() => nextTick(scrollToMingju))
 }
 
 // 九大朝代段 → 库内诗文朝代（用于点击演变脉络联动筛选名句）
@@ -895,6 +920,10 @@ async function composePoem() {
     composeResult.value = await agentCompose({ concepts: composeConcepts.value, style: composeStyle.value, theme: selectedTones.value.join('、') })
   } catch { composeResult.value = { title: '创作失败', poem: '请稍后再试。', note: '' } }
   finally { composeSending.value = false }
+}
+function resetCompose() {
+  composeResult.value = null
+  composeToneOpen.value = false
 }
 
 onMounted(async () => {
@@ -1353,4 +1382,33 @@ onBeforeRouteLeave((to) => {
 .compose-tone-tag { font-size: 12px; }
 .tone-enter-active, .tone-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
 .tone-enter-from, .tone-leave-to { opacity: 0; transform: translateY(-4px); }
+
+/* AI 创诗：控件 ↔ 结果 切换过渡 */
+.compose-enter-active, .compose-leave-active { transition: opacity 0.28s ease, transform 0.28s ease; }
+.compose-enter-from { opacity: 0; transform: translateY(10px); }
+.compose-leave-to { opacity: 0; transform: translateY(-6px); }
+
+/* ─────────── 扩展工具 ─────────── */
+.tool-link {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px 8px 10px; border-radius: 8px;
+  border: 1px solid var(--c); color: var(--c);
+  background: transparent; font-size: 13px; font-weight: 600;
+  letter-spacing: 0.06em; transition: all .2s;
+}
+.tool-link:hover {
+  background: var(--c); color: #F5F1E8;
+  transform: translateY(-1px); box-shadow: 0 6px 16px -8px var(--c);
+}
+.tool-ico {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 6px; font-size: 13px;
+  background: var(--c); color: #F5F1E8; flex: none;
+  box-shadow: inset 0 0 0 1.5px rgba(245,241,232,0.5);
+  transition: background .2s, box-shadow .2s;
+}
+.tool-link:hover .tool-ico {
+  background: rgba(245,241,232,0.22);
+  box-shadow: inset 0 0 0 1px rgba(245,241,232,0.65);
+}
 </style>

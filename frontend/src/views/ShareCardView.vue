@@ -1,7 +1,7 @@
 <!-- 分享卡片预览 + 下载页 -->
 <template>
   <div class="max-w-3xl mx-auto px-4 py-10">
-    <button class="back-btn" @click="goBack">← 返回意象详情</button>
+    <button class="back-btn" @click="goBack">← 返回意象卡片</button>
     <h1 class="font-song text-2xl font-bold mt-6 text-center">意象分享卡片</h1>
     <p class="text-center text-xs text-qianhui mt-1">长按或右键可保存 · 也可一键下载 PNG / SVG</p>
 
@@ -78,3 +78,18 @@ onMounted(async () => {
   }
 })
 </script>
+
+<style scoped>
+/* 返回按钮：贴合平台石青主色，hover 填充 */
+.back-btn {
+  color: #2B4C7E;
+  border-color: rgba(43, 76, 126, 0.35);
+  background: rgba(255, 255, 255, 0.65);
+}
+.back-btn:hover {
+  color: #F5F1E8;
+  border-color: #2B4C7E;
+  background: #2B4C7E;
+  transform: translateY(-1px);
+}
+</style>

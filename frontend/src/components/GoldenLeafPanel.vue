@@ -114,6 +114,10 @@ const hover = ref(null)
 
 const dpr = Math.min(window.devicePixelRatio || 1, 2)
 const VW = 310, VH = 330
+// 纸张噪点：一次性生成，避免逐帧 Math.random() 造成闪烁
+const NOISE = Array.from({ length: 10 }, () => ({
+  x: Math.random() * VW, y: Math.random() * VH, w: Math.random() * 35 + 10,
+}))
 
 // 主题族进度 chips
 const themeChips = computed(() => Object.entries(themeProgress.value)
@@ -152,9 +156,15 @@ function downloadSvg() {
 let zoom = 1, tx = 0, ty = 0
 let dragging = false, dsx = 0, dsy = 0, otx = 0, oty = 0
 let dirty = true
+let layoutDirty = true
 let leaves = []
 let timer = null
 let rid = 0
+// 缩放动画：目标值 + 指数阻尼趋近（连续平滑，快速滚动不重启）
+let target = null
+const ZOOM_EASING = 0.35
+// 叶片/文字自适应缩放因子（意象越多越小，在 computeLeaves 中计算）
+let leafScale = 1
 
 /* ─────────── Elegant pointed leaf ─────────── */
 function leafPath(ctx, s) {
@@ -220,65 +230,109 @@ function drawLeaf(ctx, x, y, s, rot) {
 
 function drawName(ctx, x, y, name) {
   const n = name.length
-  const size = n <= 1 ? 16 : n === 2 ? 13 : 10
+  const size = (n <= 1 ? 16 : n === 2 ? 13 : 10) * leafScale
   ctx.font = 'bold ' + size + 'px "Kaiti SC","STKaiti","KaiTi","Noto Serif SC",serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.lineJoin = 'round'
   // 先描一圈浅色光晕，再用深棕填充，保证在金色叶片上清晰可读
-  ctx.lineWidth = 3
+  ctx.lineWidth = Math.max(1.5, 3 * leafScale)
   ctx.strokeStyle = 'rgba(253,249,242,0.85)'
   ctx.strokeText(name, x, y - 2)
   ctx.fillStyle = '#3A2506'
   ctx.fillText(name, x, y - 2)
 }
 
+/* ─────────── Layout（列表变化才重算，避免拖动逐帧随机漂移） ─────────── */
+function computeLeaves() {
+  const items = list.value
+  const N = items.length
+  const cx = VW / 2, cy = VH / 2
+  const golden = Math.PI * (3 - Math.sqrt(5))
+  // 自适应缩放：意象越多叶片/文字越小（≤18 个时保持原大小）
+  const k = Math.max(0.55, Math.min(1, Math.sqrt(18 / Math.max(N, 6))))
+  leafScale = k
+
+  // 黄金角螺旋生成初始位置（半径上限适配画布，避免叶片被 clamp 堆到边界）
+  leaves = items.map((item, i) => {
+    const a = i * golden
+    const r = Math.min(24 + Math.sqrt(i) * (30 * k + 6), 100)
+    const name = item.name || '?'
+    return {
+      id: item.id, name, theme: item.theme || '—',
+      poetryCount: item.poetryCount, at: item.exploredAt,
+      size: (24 + Math.max(0, name.length - 1) * 4) * k,
+      x: cx + Math.cos(a) * r,
+      y: cy + Math.sin(a) * r * 0.82,
+      rot: (i % 7) * 0.15 - 0.45,
+    }
+  })
+
+  // 碰撞避免：逐对排斥，保证叶片中心保持最小间距，避免互相遮挡
+  const MIN_GAP = 4
+  for (let pass = 0; pass < 6; pass++) {
+    let moved = false
+    for (let i = 0; i < leaves.length; i++) {
+      for (let j = i + 1; j < leaves.length; j++) {
+        const dx = leaves[j].x - leaves[i].x, dy = leaves[j].y - leaves[i].y
+        const d = Math.hypot(dx, dy) || 0.01
+        const min = (leaves[i].size + leaves[j].size) * 0.62 + MIN_GAP
+        if (d < min) {
+          const push = (min - d) / 2
+          const ux = dx / d, uy = dy / d
+          leaves[i].x -= ux * push; leaves[i].y -= uy * push
+          leaves[j].x += ux * push; leaves[j].y += uy * push
+          moved = true
+        }
+      }
+    }
+    // 软 clamp 回画布边界
+    for (const p of leaves) {
+      p.x = Math.max(46, Math.min(VW - 46, p.x))
+      p.y = Math.max(52, Math.min(VH - 38, p.y))
+    }
+    if (!moved) break
+  }
+}
+
 /* ─────────── Render ─────────── */
 function render() {
   const el = cvs.value; if (!el) return
   const ctx = el.getContext('2d')
-  el.width = VW * dpr; el.height = VH * dpr
-  el.style.width = VW + 'px'; el.style.height = VH + 'px'
-  ctx.scale(dpr, dpr)
+  // 画布尺寸只在首次初始化；后续帧用 setTransform + clearRect 重绘
+  const pw = Math.round(VW * dpr), ph = Math.round(VH * dpr)
+  if (el.width !== pw || el.height !== ph) {
+    el.width = pw; el.height = ph
+    el.style.width = VW + 'px'; el.style.height = VH + 'px'
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  ctx.clearRect(0, 0, VW, VH)
 
   // Paper
   ctx.fillStyle = '#F5F1E8'
   ctx.fillRect(0, 0, VW, VH)
   ctx.fillStyle = 'rgba(195,178,148,0.035)'
-  for (let i = 0; i < 10; i++) ctx.fillRect(Math.random() * VW, Math.random() * VH, Math.random() * 35 + 10, 0.25)
+  for (const n of NOISE) ctx.fillRect(n.x, n.y, n.w, 0.25)
 
-  const items = list.value
-  if (!items.length) {
+  if (!list.value.length) {
     ctx.fillStyle = '#B0A590'
     ctx.font = '14px "Kaiti SC","STKaiti","KaiTi",serif'
     ctx.textAlign = 'center'
     ctx.fillText('未有落叶', VW / 2, VH / 2 - 10)
     ctx.fillText('探索意象来收集吧', VW / 2, VH / 2 + 16)
     leaves = []
+    layoutDirty = false
+    dirty = false
     return
   }
+
+  // 布局只在列表变化时重算，拖动/缩放复用缓存 leaves
+  if (layoutDirty) { computeLeaves(); layoutDirty = false }
 
   // Apply view
   ctx.save()
   ctx.translate(tx, ty)
   ctx.scale(zoom, zoom)
-
-  // Layout：黄金角螺旋，意象再多也能均匀铺开、互不遮挡
-  const cx = VW / 2, cy = VH / 2
-  const golden = Math.PI * (3 - Math.sqrt(5))
-  leaves = items.map((item, i) => {
-    const a = i * golden
-    const r = Math.min(28 + Math.sqrt(i) * 27, 130)
-    const name = item.name || '?'
-    return {
-      id: item.id, name, theme: item.theme || '—',
-      poetryCount: item.poetryCount, at: item.exploredAt,
-      size: 24 + Math.max(0, name.length - 1) * 4,
-      x: Math.max(46, Math.min(VW - 46, cx + Math.cos(a) * r + (Math.random() - 0.5) * 5)),
-      y: Math.max(52, Math.min(VH - 38, cy + Math.sin(a) * r * 0.82 + (Math.random() - 0.5) * 4)),
-      rot: (Math.random() - 0.5) * 0.4,
-    }
-  })
 
   // Solid: exploration order
   ctx.strokeStyle = 'rgba(170,130,55,0.35)'
@@ -322,7 +376,7 @@ function hit(se) {
 }
 
 /* ─────────── Events ─────────── */
-function onDown(e) { dragging = true; dsx = e.clientX; dsy = e.clientY; otx = tx; oty = ty }
+function onDown(e) { dragging = true; dsx = e.clientX; dsy = e.clientY; otx = tx; oty = ty; target = null }
 function onMove(e) {
   if (dragging) { tx = otx + (e.clientX - dsx); ty = oty + (e.clientY - dsy); dirty = true }
   hover.value = hit(e) || null
@@ -332,38 +386,64 @@ function onUp() { dragging = false }
 function onWheel(e) {
   const r = cvs.value?.getBoundingClientRect(); if (!r) return
   const mx = e.clientX - r.left, my = e.clientY - r.top
-  const ds = e.deltaY > 0 ? 0.9 : 1.1
+  const ds = e.deltaY > 0 ? 0.85 : 1.17
   const ns = Math.max(0.45, Math.min(3, zoom * ds))
-  tx = mx - (mx - tx) * (ns / zoom)
-  ty = my - (my - ty) * (ns / zoom)
-  zoom = ns
-  dirty = true
+  const ntx = mx - (mx - tx) * (ns / zoom)
+  const nty = my - (my - ty) * (ns / zoom)
+  setZoomTarget(ns, ntx, nty)
 }
 function onDbl(e) {
   const lf = hit(e)
   if (lf) { open.value = false; router.push('/concept/' + lf.id) }
 }
-function zoomIn() { zoom = Math.min(3, zoom * 1.2); dirty = true }
-function zoomOut() { zoom = Math.max(0.45, zoom / 1.2); dirty = true }
+function zoomIn() { zoomTo(Math.min(3, zoom * 1.2)) }
+function zoomOut() { zoomTo(Math.max(0.45, zoom / 1.2)) }
+
+// 以画布中心为锚点平滑缩放
+function zoomTo(ns) {
+  const mx = VW / 2, my = VH / 2
+  const ntx = mx - (mx - tx) * (ns / zoom)
+  const nty = my - (my - ty) * (ns / zoom)
+  setZoomTarget(ns, ntx, nty)
+}
+
+// 只记录目标，由 rAF 循环逐帧指数趋近：连续跟手，快速滚动也不会重启动画
+function setZoomTarget(ns, ntx, nty) {
+  target = { zoom: ns, tx: ntx, ty: nty }
+  dirty = true
+}
+
+function stepZoom() {
+  if (!target) return
+  zoom += (target.zoom - zoom) * ZOOM_EASING
+  tx += (target.tx - tx) * ZOOM_EASING
+  ty += (target.ty - ty) * ZOOM_EASING
+  dirty = true
+  if (Math.abs(target.zoom - zoom) < 0.001 && Math.abs(target.tx - tx) < 0.5 && Math.abs(target.ty - ty) < 0.5) {
+    zoom = target.zoom; tx = target.tx; ty = target.ty
+    target = null
+  }
+}
 
 /* ─────────── Panel ─────────── */
-function doOpen() { open.value = true; pulse.value = false; consumeNew(); tx = 0; ty = 0; zoom = 1; dirty = true }
+function doOpen() { open.value = true; pulse.value = false; consumeNew(); tx = 0; ty = 0; zoom = 1; target = null; dirty = true }
 
 // 区分点击与拖拽：拖拽后不触发打开
 function onBtnClick() { if (!wasDragged()) doOpen() }
 
 watch(newCount, (v) => {
   if (v > 0 && !open.value) {
-    pulse.value = true; open.value = true; consumeNew(); tx = 0; ty = 0; zoom = 1; dirty = true
+    pulse.value = true; open.value = true; consumeNew(); tx = 0; ty = 0; zoom = 1; target = null; dirty = true
     clearTimeout(timer)
     timer = setTimeout(() => { if (open.value) { open.value = false; pulse.value = false } }, 4000)
   }
   if (open.value) dirty = true
 })
-watch(list, () => { if (open.value) dirty = true }, { deep: true })
+watch(list, () => { layoutDirty = true; if (open.value) dirty = true }, { deep: true })
 
 /* ─────────── rAF loop ─────────── */
 function loop() {
+  if (target) stepZoom()
   if (dirty) render()
   rid = requestAnimationFrame(loop)
 }
@@ -374,7 +454,7 @@ onBeforeUnmount(() => cancelAnimationFrame(rid))
 <style scoped>
 .leaf-root { position: fixed; left: 20px; z-index: 80; }
 .leaf-collapsed {
-  position: relative; width: 52px; height: 52px;
+  position: absolute; bottom: 0; left: 0; width: 52px; height: 52px;
   display: flex; align-items: center; justify-content: center;
   background: transparent; border: none; border-radius: 14px;
   box-shadow: 0 4px 18px rgba(80,55,20,0.18); cursor: grab; transition: box-shadow .3s;
@@ -392,6 +472,7 @@ onBeforeUnmount(() => cancelAnimationFrame(rid))
   box-shadow: 0 2px 8px rgba(181,53,44,.35);
 }
 .leaf-card {
+  position: absolute; bottom: 0; left: 0;
   width: 340px; background: rgba(245,241,232,0.95); backdrop-filter: blur(14px);
   border: 1px solid rgba(160,135,100,0.25); border-radius: 12px;
   box-shadow: 0 10px 40px rgba(80,55,20,0.13); overflow: hidden;
