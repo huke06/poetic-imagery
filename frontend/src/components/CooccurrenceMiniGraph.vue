@@ -12,14 +12,7 @@
       preserveAspectRatio="none"
       @wheel.prevent="onWheel"
     >
-      <defs>
-        <radialGradient :id="'miniGlow' + uid" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" :stop-color="themeColor" stop-opacity="0.16" />
-          <stop offset="100%" :stop-color="themeColor" stop-opacity="0" />
-        </radialGradient>
-      </defs>
-      <rect :width="viewW" :height="viewH" rx="10" fill="#101a2b" />
-      <rect :width="viewW" :height="viewH" rx="10" fill="url(#miniGlow)" />
+      <rect :width="viewW" :height="viewH" rx="10" fill="#F5F1E8" />
 
       <!-- 自适应变换组：根据节点边界框自动缩放和居中 -->
       <g :transform="fitTransform">
@@ -28,15 +21,17 @@
           <path v-for="e in graph.edges" :key="'e' + e.target"
             :d="e.pathD"
             fill="none"
-            :stroke="e.isContain ? '#9aa0aa' : themeColor"
+            :stroke="e.isContain ? '#A8A29A' : themeColor"
             :stroke-width="e.isContain ? 1 : e.width"
             :stroke-opacity="e.isContain ? 0.5 : e.opacity"
             :stroke-dasharray="e.dash" stroke-linecap="round" />
         </g>
 
-        <!-- 中心节点 -->
+        <!-- 中心节点（印章式双层描边） -->
         <g :transform="`translate(${graph.centerX},${graph.centerY})`">
-          <circle :r="graph.centerR" :fill="themeColor" stroke="#F5F1E8" stroke-width="2" />
+          <circle :r="graph.centerR + 5" fill="none" :stroke="themeColor" stroke-width="1.2" opacity="0.3" />
+          <circle :r="graph.centerR" :fill="themeColor" />
+          <circle :r="graph.centerR - 2" fill="none" stroke="#F5F1E8" stroke-width="1.2" opacity="0.55" />
           <text text-anchor="middle" dominant-baseline="middle" fill="#F5F1E8" :font-size="graph.centerFont"
             style="font-family:'Kaiti SC',KaiTi,serif;font-weight:700" pointer-events="none">{{ graph.centerName }}</text>
         </g>
@@ -44,11 +39,11 @@
         <!-- 所有节点 -->
         <g v-for="n in graph.nodes" :key="n.id" :transform="`translate(${n.x},${n.y})`" class="cursor-pointer"
           @click="clickNode(n)" @mouseenter="hover = n.id" @mouseleave="hover = null">
-          <circle :r="n.r + 3" :fill="n.color" opacity="0.15" />
-          <circle :r="n.r" :fill="n.color"
-            :stroke="active(n) ? '#F5F1E8' : 'rgba(245,241,232,0.5)'"
+          <circle :r="n.r + 3" :fill="n.color" opacity="0.12" />
+          <circle :r="n.r" :fill="n.color" :fill-opacity="0.6"
+            :stroke="n.color" :stroke-opacity="active(n) ? 1 : 0.7"
             :stroke-width="active(n) ? 2.5 : 1.2" />
-          <text text-anchor="middle" dominant-baseline="middle" fill="#F5F1E8" :font-size="n.font"
+          <text text-anchor="middle" dominant-baseline="middle" fill="#2C2C2C" :font-size="n.font"
             style="font-family:'Kaiti SC',KaiTi,serif" pointer-events="none">{{ n.name }}</text>
         </g>
       </g>
@@ -75,7 +70,7 @@
 .cooc-mini__foot {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   min-height: 34px; padding: 6px 10px; font-size: 11px;
-  background: rgba(245,241,232,0.9); border: 1px solid rgba(0,0,0,0.05);
+  background: rgba(245,241,232,0.9); border: 1px solid rgba(44,44,44,0.08);
   border-top: none; border-radius: 0 0 10px 10px;
 }
 </style>

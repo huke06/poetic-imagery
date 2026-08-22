@@ -8,25 +8,24 @@
     <div v-if="show" ref="rootRef" class="fixed inset-0 z-[100] flex flex-col cooc-root" @click.self="close">
 
       <!-- 顶栏 -->
-      <div class="flex items-center justify-between px-6 py-4 text-xuanzhi shrink-0">
+      <div class="flex items-center justify-between px-6 py-4 shrink-0 bg-xuanzhi/60 backdrop-blur border-b border-shiqing/10">
         <div class="flex items-center gap-3 min-w-0">
           <span class="seal shrink-0">共现</span>
           <div class="min-w-0">
-            <h3 class="font-song text-xl font-bold truncate">「{{ data?.concept_name }}」共现图谱</h3>
-            <p class="text-xs text-xuanzhi/55 mt-0.5 truncate">线粗 = NPMI 关联强度 · 线型 = 共现类型 · 悬停/点击节点查看详情 · 点空白处关闭</p>
+            <h3 class="font-song text-xl font-bold text-moyan truncate">「{{ data?.concept_name }}」共现图谱</h3>
+            <p class="text-xs text-qianhui mt-0.5 truncate">线粗 = NPMI 关联强度 · 线型 = 共现类型 · 悬停/点击节点查看详情 · 点空白处关闭</p>
           </div>
         </div>
         <div class="flex items-center gap-2 shrink-0">
           <button
             v-if="graph && childNodeIds.length > 0"
-            class="px-3 py-1.5 rounded-lg text-sm transition-all border"
-            :class="expanded ? 'bg-white/20 text-white border-white/30 hover:bg-white/30' : 'bg-white/10 text-xuanzhi border-white/20 hover:bg-white/25'"
+            class="px-3 py-1.5 rounded-full text-sm tracking-wider transition-all border border-shiqing/35 text-shiqing hover:bg-shiqing hover:text-xuanzhi disabled:opacity-50"
             :disabled="expandLoading"
             @click="toggleExpand">
             <span v-if="expandLoading">加载中…</span>
             <span v-else>{{ expanded ? '收拢子意象图谱' : '展开子意象图谱' }}</span>
           </button>
-          <button class="w-10 h-10 rounded-full bg-white/10 hover:bg-white/25 text-xl transition-all shrink-0" @click="close" title="关闭 (Esc)">×</button>
+          <button class="w-10 h-10 rounded-full border border-moyan/20 text-moyan hover:bg-moyan/5 text-xl transition-all shrink-0" @click="close" title="关闭 (Esc)">×</button>
         </div>
       </div>
 
@@ -48,19 +47,9 @@
             preserveAspectRatio="xMidYMid meet"
           @wheel.prevent="onZoom"
           @click.self="clearSelection">
-          <defs>
-            <radialGradient :id="'coocGlow' + uid" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" :stop-color="themeColor" stop-opacity="0.22" />
-              <stop offset="60%" :stop-color="themeColor" stop-opacity="0.06" />
-              <stop offset="100%" :stop-color="themeColor" stop-opacity="0" />
-            </radialGradient>
-          </defs>
-
           <!-- 可缩放/平移的变换组 -->
           <g :transform="`translate(${panX},${panY}) scale(${zoom})`">
 
-            <!-- 背景光晕 -->
-            <circle :cx="W/2" :cy="H/2" :r="Math.min(W,H)/2" :fill="`url(#coocGlow${uid})`" pointer-events="none" />
             <!-- 连线 -->
             <g class="cooc-edges" pointer-events="none">
               <g v-for="(e, eIdx) in projectedGraph.projectedEdges" :key="'e' + e.source + '_' + e.target + (e.isSubEdge ? '_sub' : '')"
@@ -70,17 +59,19 @@
                   : ''">
                 <path :d="e.pathD"
                   fill="none"
-                  :stroke="e.isContain ? '#9aa0aa' : (e.isSubEdge ? (e.strokeColor || themeColor) : themeColor)"
+                  :stroke="e.isContain ? '#A8A29A' : (e.isSubEdge ? (e.strokeColor || themeColor) : themeColor)"
                   :stroke-width="e.isContain ? 1 : e.width"
                   :stroke-opacity="e.isContain ? 0.45 : e.opacity"
                   :stroke-dasharray="e.isContain ? '3 5' : e.dash" stroke-linecap="round" />
               </g>
             </g>
 
-            <!-- 中心根节点（投影坐标） -->
+            <!-- 中心根节点（投影坐标）：印章式双层描边 -->
             <g :transform="`translate(${projectedGraph.projectedCenter.px},${projectedGraph.projectedCenter.py})`"
               class="cursor-pointer">
-              <circle :r="58" :fill="themeColor" stroke="#F5F1E8" stroke-width="3" />
+              <circle :r="65" fill="none" :stroke="themeColor" stroke-width="1.5" opacity="0.3" />
+              <circle :r="58" :fill="themeColor" />
+              <circle :r="56" fill="none" stroke="#F5F1E8" stroke-width="1.5" opacity="0.55" />
               <text text-anchor="middle" dominant-baseline="middle" fill="#F5F1E8"
                 :font-size="displayGraph.center.font"
                 style="font-family:'Kaiti SC',KaiTi,serif;font-weight:700" pointer-events="none">{{ displayGraph.center.name }}</text>
@@ -110,44 +101,46 @@
 
               <!-- 子图谱中心节点 -->
               <template v-if="n.isSubCenter">
-                <circle :r="n.r + 10" :fill="n.theme_color || '#8A6D3B'" opacity="0.15" />
-                <circle :r="n.r + 8" :fill="n.theme_color || '#8A6D3B'" opacity="0.25" class="cooc-pulse" />
-                <circle :r="n.r" :fill="n.theme_color || '#8A6D3B'"
-                  stroke="#F5F1E8" :stroke-width="2.5" stroke-dasharray="4 3"
+                <circle :r="n.r + 10" :fill="n.theme_color || '#8A6D3B'" opacity="0.12" />
+                <circle :r="n.r + 8" :fill="n.theme_color || '#8A6D3B'" opacity="0.16" />
+                <circle :r="n.r" :fill="n.theme_color || '#8A6D3B'" :fill-opacity="0.6"
+                  :stroke="n.theme_color || '#8A6D3B'" :stroke-opacity="0.85" :stroke-width="2" stroke-dasharray="4 3"
                   :opacity="dim(n) ? 0.45 : 1" style="transition: opacity .2s" />
-                <text text-anchor="middle" dominant-baseline="middle" fill="#F5F1E8"
+                <text text-anchor="middle" dominant-baseline="middle" fill="#2C2C2C"
                   :font-size="n.font"
                   style="font-family:'Kaiti SC',KaiTi,serif" pointer-events="none">{{ n.name }}</text>
               </template>
 
               <!-- 桥接词节点 -->
               <template v-else-if="n.isBridge">
-                <circle :r="18" fill="#3a4050" stroke="#c9a96e" stroke-width="1.5" stroke-dasharray="4 3" />
-                <text text-anchor="middle" dominant-baseline="middle" fill="#e8d5a3" :font-size="12"
+                <circle :r="18" fill="#F2EAD6" stroke="#9B4423" stroke-width="1.5" stroke-dasharray="4 3" />
+                <text text-anchor="middle" dominant-baseline="middle" fill="#6B6B6B" :font-size="12"
                   style="font-family:'Kaiti SC',KaiTi,serif;font-weight:600"
                   :opacity="dim(n) ? 0.45 : 1">{{ n.name }}</text>
               </template>
 
               <!-- 普通共现节点 -->
               <template v-else-if="!n.isSubNode">
-                <circle :r="n.r + 6" :fill="n.theme_color || '#8A6D3B'" opacity="0.18" class="cooc-pulse" />
-                <circle :r="n.r" :fill="n.theme_color || '#8A6D3B'"
-                  :stroke="selected === n.id || hovered === n.id ? '#F5F1E8' : 'rgba(245,241,232,0.55)'"
-                  :stroke-width="selected === n.id ? 3 : 1.6"
+                <circle :r="n.r + 6" :fill="n.theme_color || '#8A6D3B'" opacity="0.14" />
+                <circle :r="n.r" :fill="n.theme_color || '#8A6D3B'" :fill-opacity="0.6"
+                  :stroke="n.theme_color || '#8A6D3B'"
+                  :stroke-opacity="selected === n.id || hovered === n.id ? 1 : 0.75"
+                  :stroke-width="selected === n.id ? 2.5 : 1.5"
                   :opacity="dim(n) ? 0.45 : 1" style="transition: opacity .2s" />
-                <text text-anchor="middle" dominant-baseline="middle" fill="#F5F1E8"
+                <text text-anchor="middle" dominant-baseline="middle" fill="#2C2C2C"
                   :font-size="n.font"
                   style="font-family:'Kaiti SC',KaiTi,serif" pointer-events="none">{{ n.name }}</text>
               </template>
 
               <!-- 子图谱子节点 -->
               <template v-else>
-                <circle :r="n.r + 4" :fill="n.theme_color || '#8A6D3B'" opacity="0.2" />
-                <circle :r="n.r" :fill="n.theme_color || '#8A6D3B'"
-                  :stroke="selected === n.id || hovered === n.id ? '#F5F1E8' : 'rgba(245,241,232,0.55)'"
+                <circle :r="n.r + 4" :fill="n.theme_color || '#8A6D3B'" opacity="0.16" />
+                <circle :r="n.r" :fill="n.theme_color || '#8A6D3B'" :fill-opacity="0.6"
+                  :stroke="n.theme_color || '#8A6D3B'"
+                  :stroke-opacity="selected === n.id || hovered === n.id ? 1 : 0.7"
                   :stroke-width="selected === n.id ? 2.5 : 1.2"
                   :opacity="dim(n) ? 0.45 : 1" style="transition: opacity .2s" />
-                <text text-anchor="middle" dominant-baseline="middle" fill="#F5F1E8"
+                <text text-anchor="middle" dominant-baseline="middle" fill="#2C2C2C"
                   :font-size="n.font"
                   style="font-family:'Kaiti SC',KaiTi,serif" pointer-events="none">{{ n.name }}</text>
               </template>
@@ -158,49 +151,67 @@
         </svg>
         </div>
 
-        <!-- 图例 -->
-        <div v-if="graph" class="absolute left-5 bottom-5 bg-black/35 backdrop-blur rounded-lg px-4 py-3 text-xuanzhi/85 text-xs space-y-1.5 pointer-events-none">
-          <div class="flex items-center gap-2"><svg width="34" height="6"><line x1="0" y1="3" x2="34" y2="3" stroke="#F5F1E8" stroke-width="4"/></svg> 粗 = NPMI 强</div>
-          <div class="flex items-center gap-2"><svg width="34" height="6"><line x1="0" y1="3" x2="34" y2="3" stroke="#F5F1E8" stroke-width="1.5"/></svg> 细 = NPMI 弱</div>
-          <div class="flex items-center gap-2"><svg width="34" height="6"><line x1="0" y1="3" x2="34" y2="3" stroke="#F5F1E8" stroke-width="2"/></svg> 实线 = 句内</div>
-          <div class="flex items-center gap-2"><svg width="34" height="6"><line x1="0" y1="3" x2="34" y2="3" stroke="#F5F1E8" stroke-width="2" stroke-dasharray="7 5"/></svg> 虚线 = 跨句</div>
-          <div class="flex items-center gap-2"><svg width="34" height="6"><line x1="0" y1="3" x2="34" y2="3" stroke="#F5F1E8" stroke-width="2" stroke-dasharray="2 4"/></svg> 点线 = 全诗</div>
-          <div class="flex items-center gap-2"><svg width="34" height="6"><line x1="0" y1="3" x2="34" y2="3" stroke="#9aa0aa" stroke-width="1.2" stroke-dasharray="3 5"/></svg> 灰线 = 桥接</div>
+        <!-- 图例（古籍注释式） -->
+        <div v-if="graph" class="absolute left-5 bottom-5 bg-white/75 backdrop-blur border border-moyan/10 rounded-md shadow-card px-3 py-2.5 text-xs space-y-1.5 pointer-events-none">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="w-0.5 h-3 bg-zhusha inline-block"></span>
+            <span class="font-song text-[11px] tracking-widest text-moyan/80">图例</span>
+          </div>
+          <div class="flex items-center gap-2 text-qianhui"><svg width="34" height="6"><line x1="0" y1="3" x2="34" y2="3" stroke="#2C2C2C" stroke-width="4"/></svg> 粗 = NPMI 强</div>
+          <div class="flex items-center gap-2 text-qianhui"><svg width="34" height="6"><line x1="0" y1="3" x2="34" y2="3" stroke="#2C2C2C" stroke-width="1.5"/></svg> 细 = NPMI 弱</div>
+          <div class="flex items-center gap-2 text-qianhui"><svg width="34" height="6"><line x1="0" y1="3" x2="34" y2="3" stroke="#2C2C2C" stroke-width="2"/></svg> 实线 = 句内</div>
+          <div class="flex items-center gap-2 text-qianhui"><svg width="34" height="6"><line x1="0" y1="3" x2="34" y2="3" stroke="#2C2C2C" stroke-width="2" stroke-dasharray="7 5"/></svg> 虚线 = 跨句</div>
+          <div class="flex items-center gap-2 text-qianhui"><svg width="34" height="6"><line x1="0" y1="3" x2="34" y2="3" stroke="#2C2C2C" stroke-width="2" stroke-dasharray="2 4"/></svg> 点线 = 全诗</div>
+          <div class="flex items-center gap-2 text-qianhui"><svg width="34" height="6"><line x1="0" y1="3" x2="34" y2="3" stroke="#A8A29A" stroke-width="1.2" stroke-dasharray="3 5"/></svg> 灰线 = 桥接</div>
         </div>
 
         <!-- 缩放控制 -->
-        <div v-if="graph" class="absolute right-5 top-2 bg-black/35 backdrop-blur rounded-lg px-2 py-1.5 flex items-center gap-1 text-xuanzhi/80 text-sm">
-          <button class="w-7 h-7 rounded hover:bg-white/15 flex items-center justify-center" @click="zoomIn" title="放大">+</button>
-          <span class="text-xs w-12 text-center">{{ Math.round(zoom * 100) }}%</span>
-          <button class="w-7 h-7 rounded hover:bg-white/15 flex items-center justify-center" @click="zoomOut" title="缩小">−</button>
-          <button class="w-7 h-7 rounded hover:bg-white/15 flex items-center justify-center" @click="resetView" title="重置视图">⌂</button>
+        <div v-if="graph" class="absolute right-5 top-2 bg-white/75 backdrop-blur border border-moyan/10 rounded-full shadow-card px-1.5 py-1 flex items-center gap-0.5 text-sm">
+          <button class="w-7 h-7 rounded-full hover:bg-shiqing/5 text-shiqing flex items-center justify-center" @click="zoomIn" title="放大">+</button>
+          <input
+            v-model="zoomDraft"
+            type="text"
+            inputmode="numeric"
+            class="w-11 text-center text-xs font-song text-moyan bg-transparent border border-moyan/15 rounded focus:border-shiqing focus:outline-none focus:bg-white/70 transition-colors"
+            title="输入缩放百分比（30–500）"
+            @focus="zoomFocused = true"
+            @blur="zoomFocused = false; commitZoomPercent()"
+            @keyup.enter="$event.target.blur()"
+            @mousedown.stop
+          />
+          <span class="text-xs text-qianhui font-song">%</span>
+          <button class="w-7 h-7 rounded-full hover:bg-shiqing/5 text-shiqing flex items-center justify-center" @click="zoomOut" title="缩小">−</button>
+          <button class="w-7 h-7 rounded-full hover:bg-shiqing/5 text-shiqing flex items-center justify-center" @click="resetView" title="重置视图">⌂</button>
         </div>
 
         <!-- 统计 -->
-        <div v-if="graph" class="absolute right-5 bottom-5 bg-black/35 backdrop-blur rounded-lg px-4 py-2.5 text-xuanzhi/70 text-[11px] text-right leading-5 pointer-events-none">
-          <div>共现意象 <b class="text-xuanzhi">{{ stats.total }}</b> 个</div>
-          <div>句内 {{ stats.inner }} · 跨句 {{ stats.cross }} · 全诗 {{ stats.whole }}</div>
-          <div v-if="expanded" class="text-xuanzhi/80 mt-1">已展开 {{ expandedCount }} 个子图谱</div>
+        <div v-if="graph" class="absolute right-5 bottom-5 bg-white/75 backdrop-blur border border-moyan/10 rounded-md shadow-card px-4 py-2.5 text-[11px] text-right leading-5 pointer-events-none">
+          <div class="text-qianhui">共现意象 <b class="text-zhusha font-song text-[13px]">{{ stats.total }}</b> 个</div>
+          <div class="text-qianhui">句内 <span class="text-zhusha font-song">{{ stats.inner }}</span> · 跨句 <span class="text-zhusha font-song">{{ stats.cross }}</span> · 全诗 <span class="text-zhusha font-song">{{ stats.whole }}</span></div>
+          <div v-if="expanded" class="text-qianhui/80 mt-1">已展开 <span class="text-zhusha font-song">{{ expandedCount }}</span> 个子图谱</div>
         </div>
 
         <!-- 提示 -->
-        <div class="absolute left-5 top-2 bg-black/35 backdrop-blur rounded-lg px-3 py-1.5 text-xuanzhi/60 text-[10px] pointer-events-none">
+        <div class="absolute left-5 top-2 bg-white/75 backdrop-blur border border-moyan/10 rounded-full px-3 py-1.5 text-qianhui text-[10px] pointer-events-none">
           滚轮缩放 · 拖拽节点移动 · 拖拽空白平移
         </div>
         </div>
 
         <!-- 右侧详情面板 -->
-        <div class="w-72 shrink-0 border-l border-white/10 bg-black/25 backdrop-blur-sm flex flex-col">
-          <div v-if="activeCards.length === 0" class="flex-1 flex items-center justify-center text-xuanzhi/35 text-xs px-6 text-center">
-            悬停或点击节点<br>查看意象详情
+        <div class="w-72 shrink-0 border-l border-moyan/10 bg-xuanzhi/85 backdrop-blur-md flex flex-col">
+          <div v-if="activeCards.length === 0" class="flex-1 flex flex-col items-center justify-center text-qianhui/70 text-xs px-6 text-center gap-2.5">
+            <span class="w-9 h-9 rounded-full border border-shiqing/25 bg-white/60 flex items-center justify-center">
+              <span class="w-2.5 h-2.5 rounded-full bg-shiqing/40"></span>
+            </span>
+            <span class="font-song leading-5">悬停或点击节点<br>查看意象详情</span>
           </div>
           <template v-else>
-            <div class="px-4 py-3 border-b border-white/10 text-xuanzhi/60 text-xs">
+            <div class="px-4 py-3 border-b border-moyan/10 text-qianhui/70 text-xs">
               {{ activeCards.length > 1 ? '已选中节点' : '悬停节点' }}
             </div>
             <div v-for="n in activeCards" :key="'card_' + n.id"
               class="flex-1 overflow-y-auto px-4 py-3"
-              :style="{ borderBottom: activeCards.indexOf(n) < activeCards.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none' }">
+              :style="{ borderBottom: activeCards.indexOf(n) < activeCards.length - 1 ? '1px solid rgba(44,44,44,0.08)' : 'none' }">
               <div class="cooc-card" :style="{ ['--accent']: n.accentColor }">
                 <div class="flex items-start justify-between gap-2">
                   <b class="font-song text-sm" :style="{ color: n.accentColor }">{{ n.name }}</b>
@@ -234,22 +245,34 @@
 </template>
 
 <style scoped>
-.cooc-root { background: radial-gradient(120% 90% at 50% 0%, #16263f 0%, #0e1726 58%, #0a101c 100%); }
-.cooc-scene { }
+.cooc-root {
+  background: #F5F1E8;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(43, 76, 126, 0.05), transparent),
+    radial-gradient(ellipse 60% 40% at 90% 110%, rgba(155, 68, 35, 0.04), transparent);
+  background-attachment: fixed;
+}
+.cooc-scene { width: 100%; height: 100%; }
+.cooc-scene svg { display: block; }
 .fade-enter-active, .fade-leave-active { transition: opacity 0.35s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
 .cooc-card {
-  width: 100%; border-radius: 10px; padding: 10px 12px;
+  width: 100%; border-radius: 6px; padding: 10px 12px;
   font-size: 12px; line-height: 1.6;
-  background: #F5F1E8; box-shadow: 0 0 0 2px var(--accent);
+  background: #FBF8F1;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-left: 2px solid var(--accent);
+  box-shadow: 0 1px 6px rgba(44, 44, 44, 0.05);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 .cooc-card { pointer-events: auto; }
+.cooc-card:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(44, 44, 44, 0.12); }
 .cooc-edges line { opacity: 1; }
-.cooc-pulse { opacity: 0.14; }
 .node-group { cursor: grab; will-change: transform; }
 .node-group:active { cursor: grabbing; }
-.node-group > g { transform-box: fill-box; transform-origin: center; }
+.node-group > g { transform-box: fill-box; transform-origin: center; transition: transform 0.18s ease; }
+.node-group:hover > g { transform: scale(1.05); }
 .node-no-transition { transition: none !important; }
 
 @keyframes nodePopIn {
@@ -1261,6 +1284,39 @@ function zoomIn() { zoom.value = Math.min(5, zoom.value * 1.2) }
 function zoomOut() { zoom.value = Math.max(0.3, zoom.value / 1.2) }
 function resetView() { zoom.value = 1; panX.value = 0; panY.value = 0 }
 
+// ── 手动输入缩放百分比 ──
+const zoomDraft = ref('100')        // 输入框草稿（字符串，提交时才生效）
+const zoomFocused = ref(false)
+
+function zoomToPercent(pct) {
+  const clamped = Math.max(30, Math.min(500, pct))   // 对应 zoom 0.3–5
+  zoomDraft.value = String(clamped)
+  const newZoom = clamped / 100
+  // 以画布中心为锚点缩放，与滚轮缩放一致，缩放后图谱仍居中
+  const canvas = canvasRef.value
+  if (canvas) {
+    const rect = canvas.getBoundingClientRect()
+    const anchor = clientToSvg(rect.left + rect.width / 2, rect.top + rect.height / 2)
+    panX.value = anchor.x - (anchor.x - panX.value) * (newZoom / zoom.value)
+    panY.value = anchor.y - (anchor.y - panY.value) * (newZoom / zoom.value)
+  }
+  zoom.value = newZoom
+}
+
+function commitZoomPercent() {
+  const pct = parseInt(zoomDraft.value, 10)
+  if (Number.isNaN(pct)) {           // 非法输入回退到当前值
+    zoomDraft.value = String(Math.round(zoom.value * 100))
+    return
+  }
+  zoomToPercent(pct)
+}
+
+// 滚轮 / +/− / 复位改变 zoom 时，同步草稿（输入框失焦期间）
+watch(zoom, (v) => {
+  if (!zoomFocused.value) zoomDraft.value = String(Math.round(v * 100))
+})
+
 function onCanvasMouseDown(e) {
   if (e.button !== 0) return
   draggingNode = null
@@ -1493,6 +1549,7 @@ function resetState() {
   zoom.value = 1
   panX.value = 0
   panY.value = 0
+  zoomDraft.value = '100'
 
   // 清理拖拽相关状态
   draggingNode = null
