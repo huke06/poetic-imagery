@@ -939,7 +939,9 @@ onMounted(async () => {
     const [arts, coocData] = await Promise.all([getConceptArtworks(conceptId), getConceptCooccurrence(conceptId)])
     artworks.value = arts
     cooc.value = coocData
-    await Promise.all([loadPoetries(), loadSpectrum(), loadUsageSummary(false)])
+    await Promise.all([loadPoetries(), loadSpectrum()])
+    // 用法谱系总结在后台生成，不阻塞页面就绪（冷门意象首次访问需调 LLM 约几秒，总结框内已有「AI 正在总结…」状态）
+    void loadUsageSummary(false)
     // 从「经典名句」跳诗歌详情后返回：先就绪、恢复滚动，再揭示内容，直接落在名句位置，避免可见跳动
     const savedScroll = sessionStorage.getItem(`scroll:concept:${conceptId}`)
     if (savedScroll != null) sessionStorage.removeItem(`scroll:concept:${conceptId}`)
