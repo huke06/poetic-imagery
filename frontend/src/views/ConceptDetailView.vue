@@ -596,11 +596,14 @@ const ROLE_ORDER = ["起兴", "比喻", "拟人", "用典", "对偶", "烘托", 
 const usageRadarOption = computed(() => {
   const acc = {}
   for (const s of spectrum.value) {
-    const scores = (s.usage_scores && typeof s.usage_scores === 'object') ? s.usage_scores : null
+    // usage_scores 为空对象时回退到 role_in_poem（经 _infer_role 填写的角色）
+    const scores = (s.usage_scores && typeof s.usage_scores === 'object' && Object.keys(s.usage_scores).length) ? s.usage_scores : null
     if (scores) {
       ROLE_ORDER.forEach(r => { acc[r] = (acc[r] || 0) + (scores[r] || 0) })
     } else if (s.role_in_poem) {
-      acc[s.role_in_poem] = (acc[s.role_in_poem] || 0) + 2
+      // 从「豪情壮志的起兴与象征」这类描述中提取核心角色词
+      const role = ROLE_ORDER.find(r => s.role_in_poem.includes(r))
+      if (role) acc[role] = (acc[role] || 0) + 2
     }
   }
   // 平方根压缩数值差距（去掉 +1 基线，无分值的角色为 0，避免各意象雷达雷同）
